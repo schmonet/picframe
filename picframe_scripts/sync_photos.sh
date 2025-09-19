@@ -1,4 +1,25 @@
 #!/bin/bash
+
+# ========================================================================================
+#
+# Photo Synchronization Script for Picframe
+#
+# This script synchronizes photos from a remote SMB share to a local cache directory.
+# It is designed to be run periodically (e.g., via cron) to ensure a fresh and
+# rotating supply of images for the Picframe application.
+#
+# Key Features:
+# - Connects to an SMB share.
+# - Randomly selects albums that have not been shown recently.
+# - Copies a subset of photos from selected albums to a local cache.
+# - Manages cache size to avoid filling up the storage.
+# - Cleans up albums from the cache after they have been displayed.
+#
+# Author of modifications: Martin Schmalohr
+# AI-assisted development: Google's Gemini
+#
+# ========================================================================================
+
 set -e
 
 log_msg() {
@@ -118,4 +139,3 @@ while true; do
     mv "$TMP_DEST_ALBUM_PATH" "$DEST_ALBUM_PATH"
 done
 log_msg "Sync process finished."
-

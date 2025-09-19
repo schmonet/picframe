@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+
+# ========================================================================================
+#
+# PIR Sensor and Power Manager for Picframe
+#
+# This script manages the power of the display and the Picframe service based on
+# motion detection from a PIR sensor and a predefined day/night schedule.
+# It aims to reduce power consumption by turning off the display and stopping the
+# service when no motion is detected for a certain period or during the night.
+#
+# Author of modifications: Martin Schmalohr
+# AI-assisted development: Google's Gemini
+#
+# ========================================================================================
+
 import time
 import subprocess
 import os
@@ -77,7 +92,6 @@ def set_pause(pause: bool, port: int):
             print(f"Error sending HTTP request to {url}: {e}")
         return False
 
-
 def set_pause_with_retry(pause: bool, port: int):
     """Calls set_pause with a retry mechanism for startup robustness."""
     action_str = "pause" if pause else "unpause"
@@ -92,7 +106,6 @@ def set_pause_with_retry(pause: bool, port: int):
                 time.sleep(3)
             else:
                 print(f"Could not {action_str} slideshow after 10 attempts. Continuing anyway.")
-
 
 def main():
     """Main function."""
