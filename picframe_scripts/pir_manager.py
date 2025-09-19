@@ -42,7 +42,7 @@ HOLDSCRREN_TIMEOUT_S = 3600  # 1 hour of inactivity to pause the slideshow
 BLACKSCREEN_TIMEOUT_S = 10800  # 3 hours of inactivity for a black screen
 NIGHT_START_HOUR = 0  # 00:00
 NIGHT_END_HOUR = 6    # 06:00
-LOOP_SLEEP_S = 900     # Time between checks (15 minutes)
+LOOP_SLEEP_S = 2      # Time between checks (2 seconds)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "/home/schmali/picframe_data/config/configuration.yaml"
 
@@ -150,10 +150,10 @@ def main():
                         set_display_power(True)
                         set_service(True)
                         set_pause_with_retry(False, http_port)
-                    elif current_state == STATE_BLACK:
-                        set_display_power(True)
-                    elif current_state == STATE_HOLD:
-                        set_pause(False, http_port)
+                    else:  # Covers STATE_BLACK and STATE_HOLD
+                        if current_state == STATE_BLACK:
+                            set_display_power(True)
+                        set_pause(False, http_port) # Always unpause if not OFF
                     current_state = STATE_ON
             else:  # No motion
                 if current_state == STATE_OFF and not is_night:
