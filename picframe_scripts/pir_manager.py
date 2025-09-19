@@ -123,10 +123,10 @@ def main():
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(PIR_PIN, GPIO.IN)
     
-    last_motion_time = time.time()
+    last_motion_time = time.monotonic()
     current_state = STATE_ON
     
-    print("---" + "PIR Manager Started" + "---")
+    print("---PIR Manager Started---")
     set_display_power(True) # Ensure display is on at start
     set_service(True)
     set_pause_with_retry(False, http_port) # Ensure slideshow is not paused
@@ -139,17 +139,10 @@ def main():
             else:  # For night periods that cross midnight (e.g., 22:00-6:00)
                 is_night = now.hour >= NIGHT_START_HOUR or now.hour < NIGHT_END_HOUR
             motion_detected = GPIO.input(PIR_PIN) == GPIO.HIGH
-            inactivity_time = time.time() - last_motion_time
-
-            # Reset timer if a system time jump is detected (e.g., after boot + NTP sync)
-            # We check if the measured inactivity is much larger than the loop sleep time.
-            if inactivity_time < 0 or inactivity_time > (LOOP_SLEEP_S + 60):
-                print(f"Possible time jump detected (inactivity: {inactivity_time}s). Resetting timer.")
-                last_motion_time = time.time()
-                inactivity_time = 0
+            inactivity_time = time.monotonic() - last_motion_time
 
             if motion_detected:
-                last_motion_time = time.time()
+                last_motion_time = time.monotonic()
                 if current_state != STATE_ON:
                     print("Motion detected. Resuming normal operation.")
                     if current_state == STATE_OFF:
@@ -169,7 +162,7 @@ def main():
                     set_display_power(True)
                     set_service(True)
                     set_pause_with_retry(False, http_port)
-                    last_motion_time = time.time()
+                    last_motion_time = time.monotonic()
                     current_state = STATE_ON
                 elif is_night:
                     if current_state != STATE_OFF:

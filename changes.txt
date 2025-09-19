@@ -33,6 +33,7 @@ Funktionsbeschreibung der geänderten und hinzugefügten Dateien:
     - Die Display-Steuerung wurde generell auf `cec-client` umgestellt (vorher `kmsblank`).
     - Benötigte Konfiguration (HTTP-Port) wird aus der zentralen `configuration.yaml` gelesen.
   - (Korrektur) Behebt einen Fehler, bei dem der Inaktivitäts-Timer nach einem Systemneustart durch Zeitsprünge (NTP-Sync) fälschlicherweise ausgelöst wurde. Der Timer wird nun bei großen, unerwarteten Zeitsprüngen zurückgesetzt.
+  - (Korrektur) Behebt einen Fehler, bei dem der Inaktivitäts-Timer durch die Verwendung von `time.time()` anstelle von `time.monotonic()` unzuverlässig war. Die Zeitmessung wurde auf `time.monotonic()` umgestellt, um sie von Systemzeit-Änderungen (z.B. NTP-Sync) unabhängig zu machen. Dies verhindert, dass der Timer fälschlicherweise zurückgesetzt wird und stellt sicher, dass der Bildschirm bei Inaktivität wie erwartet ausgeschaltet wird.
   - (Korrektur) Verbessert die Stabilität beim Starten des picframe-Dienstes durch eine Wiederholungslogik, die sicherstellt, dass der HTTP-Befehl zum Aufheben der Pause erst gesendet wird, wenn der Dienst bereit ist.
   - Prüft alle 15 Minuten den PIR-Sensor.
   - `HOLD`: Pausiert die Diashow nach 1 Stunde ohne Bewegung.
