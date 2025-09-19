@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -124,8 +125,9 @@ class InterfacePeripherals:
             self.__menu.hide()
 
     def __get_gui(self) -> "pi3d.Gui":
+        font_file = os.path.expanduser(self.__model.get_viewer_config()["font_file"])
         font = pi3d.Font(
-            self.__model.get_viewer_config()["font_file"],
+            font_file,
             color=(255, 255, 255, 255),
             font_size=self.__model.get_viewer_config()["menu_text_sz"],
             shadow_radius=3,

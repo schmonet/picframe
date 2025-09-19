@@ -298,9 +298,6 @@ class Controller:
         return pic.fname
 
     def loop(self):  # TODO exit loop gracefully and call image_cache.stop()
-        # catch ctrl-c
-        signal.signal(signal.SIGINT, self.__signal_handler)
-
         video_extended = False
         while self.keep_looping:
             time_delay = self.__model.time_delay
@@ -309,6 +306,12 @@ class Controller:
             tm = time.time()
             pics = None  # get_next_file returns a tuple of two in case paired portraits have been specified
             if not self.paused and tm > self.__next_tm or self.__force_navigate:
+                
+                # Delete the file(s) that were just displayed.
+                # This is done *before* get_next_file() is called to act on the correct image.
+                if self.__next_tm != 0: # Don't delete on the very first image
+                    self.__model.delete_file()
+
                 self.__next_tm = tm + self.__model.time_delay
                 self.__force_navigate = False
                 pics = self.__model.get_next_file()

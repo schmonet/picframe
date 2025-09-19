@@ -137,3 +137,5 @@ dmypy.json
 
 #mac os
 .DS_Store
+
+picframe_data/

@@ -109,6 +109,7 @@ class ViewerDisplay:
         self.__image_overlay = None
         self.__prev_overlay_time = None
         self.__video_streamer = None
+        self.__kmsblank_proc = None
         ImageFile.LOAD_TRUNCATED_IMAGES = True  # occasional damaged file hangs app
 
     @property
@@ -618,14 +619,16 @@ class ViewerDisplay:
                     new_sfg = None
             else:  # normal image or image pair
                 new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
+
+            if new_sfg is None:
+                # image failed to load, skip it
+                return (self.__display.loop_running(), True, False)
+
             tm = time.time()
             self.__next_tm = tm + time_delay
             self.__name_tm = tm + fade_time + self.__show_text_tm  # text starts after slide transition
-            if new_sfg is not None:  # this is a possible return value which needs to be caught
-                self.__sbg = self.__sfg
-                self.__sfg = new_sfg
-            else:
-                (self.__sbg, self.__sfg) = (self.__sfg, self.__sbg)  # swap existing images over
+            self.__sbg = self.__sfg
+            self.__sfg = new_sfg
             self.__alpha = 0.0
             if fade_time > 0.5:
                 self.__delta_alpha = 1.0 / (self.__fps * fade_time)  # delta alpha
@@ -659,7 +662,7 @@ class ViewerDisplay:
                 self.__slide.unif[48] = 0.0
                 self.__slide.unif[49] = 0.0
 
-        if self.__kenburns and self.__alpha >= 1.0:
+        if self.__kenburns and self.__alpha >= 1.0 and not paused:
             t_factor = time_delay - fade_time - self.__next_tm + tm
             # add exponentially smoothed tweening in case of timing delays etc. to avoid 'jumps'
             self.__slide.unif[48] = self.__slide.unif[48] * 0.95 + self.__xstep * t_factor * 0.05
