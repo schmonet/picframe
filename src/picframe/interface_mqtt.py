@@ -19,7 +19,7 @@ import logging
 import json
 import os
 import ssl
-from typing import Optional, List
+from typing import Optional, List, Union
 import paho.mqtt.client as mqtt
 from picframe import __version__
 from picframe.controller import Controller
@@ -116,7 +116,7 @@ class InterfaceMQTT:
         _client: mqtt.Client,
         _userdata: object,
         _disconnect_flags: mqtt.DisconnectFlags,
-        reason_code: mqtt.ReasonCode | int | None,
+        reason_code: Union[mqtt.ReasonCode, int, None],
         _properties: Optional[mqtt.Properties] = None,
     ) -> None:
         """
@@ -130,7 +130,7 @@ class InterfaceMQTT:
             User-defined data of any type.
         disconnect_flags : mqtt.DisconnectFlags
             Flags indicating the reason for disconnection.
-        reason_code : mqtt.ReasonCode | int | None
+        reason_code : Union[mqtt.ReasonCode, int, None]
             The disconnection reason code.
         properties : Optional[mqtt.Properties]
             Additional properties sent by the broker.
@@ -166,7 +166,7 @@ class InterfaceMQTT:
         client: mqtt.Client,
         _userdata: object,
         _flags: mqtt.ConnectFlags,
-        reason_code: mqtt.ReasonCode | int,
+        reason_code: Union[mqtt.ReasonCode, int],
         _properties: Optional[mqtt.Properties] = None,
     ) -> None:
         """
@@ -180,7 +180,7 @@ class InterfaceMQTT:
             The user data passed to the client when connecting.
         flags : mqtt.ConnectFlags
             Response flags sent by the broker.
-        reason_code : mqtt.ReasonCode | int
+        reason_code : Union[mqtt.ReasonCode, int]
             The connection result code.
         properties : Optional[mqtt.Properties]
             Additional properties sent by the broker.

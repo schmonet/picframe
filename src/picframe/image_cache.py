@@ -179,6 +179,14 @@ class ImageCache:
         rows = self.__db.execute(sql).fetchall()
         return [row['name'] for row in rows]
 
+    def delete_file_from_db(self, file_id):
+        sql_delete_file = "DELETE FROM file WHERE file_id = ?"
+        self.__db_write_lock.acquire()
+        self.__db.execute(sql_delete_file, (file_id,))
+        self.__db.commit() # Commit immediately for this specific deletion
+        self.__db_write_lock.release()
+        self.__logger.info("Deleted file_id %s from database.", file_id)
+
     def __get_geo_location(self, lat, lon):  # TODO periodically check all lat/lon in meta with no location and try again # noqa: E501
         location = self.__geo_reverse.get_address(lat, lon)
         if len(location) == 0:
@@ -359,8 +367,8 @@ class ImageCache:
         sql_select = "SELECT * FROM folder WHERE name = ?"
         for dir in [d[0] for d in os.walk(self.__picture_dir, followlinks=self.__follow_links)]:
             if os.path.basename(dir):
-                if os.path.basename(dir)[0] == '.':
-                    continue  # ignore hidden folders
+                if os.path.basename(dir)[0] == '.' or '.tmp' in dir:
+                    continue  # ignore hidden folders and temporary directories
             mod_tm = int(os.stat(dir).st_mtime)
             found = self.__db.execute(sql_select, (dir,)).fetchone()
             if not found or found['last_modified'] < mod_tm or found['missing'] == 1:
@@ -378,11 +386,20 @@ class ImageCache:
             WHERE file.basename = ? AND file.extension = ? AND folder.name = ? AND file.last_modified >= ?
         """
         for dir, _date in modified_folders:
-            for file in os.listdir(dir):
+            try:
+                files_in_dir = os.listdir(dir)
+            except FileNotFoundError:
+                self.__logger.warning("Directory not found during scan: %s", dir)
+                continue # Skip to the next directory
+            except NotADirectoryError:
+                self.__logger.warning("Path is not a directory during scan: %s", dir)
+                continue # Skip to the next directory
+            for file in files_in_dir:
                 base, extension = os.path.splitext(file)
                 if (extension.lower() in (ImageCache.EXTENSIONS + VIDEO_EXTENSIONS)
                         # have to filter out all the Apple junk
-                        and '.AppleDouble' not in dir and not file.startswith('.')):
+                        and '.AppleDouble' not in dir and not file.startswith('.')
+                        and '.tmp' not in dir and '.tmp' not in file):
                     full_file = os.path.join(dir, file)
                     mod_tm = os.path.getmtime(full_file)
                     found = self.__db.execute(sql_select, (base, extension.lstrip("."), dir, mod_tm)).fetchone()
@@ -575,8 +592,3 @@ class ImageCache:
         e['caption'] = getattr(meta, 'caption', None)
 
         return e
-
-
-# If being executed (instead of imported), kick it off...
-if __name__ == "__main__":
-    cache = ImageCache(picture_dir='/home/pi/Pictures', follow_links=False, db_file='/home/pi/db.db3', geo_reverse=None, update_interval=2)

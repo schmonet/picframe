@@ -1,0 +1,39 @@
+# ------------------
+# SERVER AND SHARE
+# ------------------
+# IP address of your SMB/Windows server
+server_ip: "192.168.178.26"
+# Name of the shared folder on the server
+share_name: "Fotos"
+# Path to a credentials file for the SMB share.
+credentials_file: "/home/user/.smb_credentials"
+# Optional: If your server requires a domain, specify it here (e.g., WORKGROUP)
+domain: ""
+# The version of the SMB protocol to use. 3.0 is a good default.
+smb_version: "3.0"
+
+# ---------------------
+# CACHE AND SYNC LOGIC
+# ---------------------
+# The main cache where albums are stored after download and that picframe reads from.
+picframe_cache_path: "/home/user/picframe_cache"
+# The log file to track shown albums and prevent immediate repeats.
+shown_albums_log: "/home/user/picframe/picframe_scripts/shown_albums.log"
+# Maximum size of the cache in Gigabytes.
+max_cache_size_gb: 5
+# Maximum number of pictures to download per album.
+max_pics_per_album: 50
+# The temporary mount point for the remote share.
+mount_point: "/mnt/server_share"
+# Randomly pick folders from root i.e. years <YYYY> for download
+shuffle_folder_root: true
+# Randomly pick subfolders i.e. <location> from each year <YYYY> for download
+shuffle_album_subfolder: true
+# Only include folders from root for download, which follow this RegEx i.e. years <YYYY>
+filter_root_folders: "/[0-9][0-9][0-9][0-9]/"
+
+# -----------------
+# PICFRAME CONFIG
+# -----------------
+# Path to picframe's main configuration file.
+picframe_config_path: "/home/user/picframe/picframe_data/config/configuration.yaml"
