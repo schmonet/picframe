@@ -64,3 +64,18 @@ Many Thanks to Wolfgang [www.thedigitalpictureframe.com](https://www.thedigitalp
 A special Thank to Paddy Gaunt one of the authors of the [pi3d](https://github.com/pi3d/pi3d_demos) project. You are doing a great job!
 
 Last but no least a big Thank You to Jeff Godfrey. Your auto mat feature and database driven cache is an outstanding piece of code.
+
+---
+
+## Fork Information
+
+This repository is a fork of the original [picframe by helgeerbe](https://github.com/helgeerbe/picframe). It includes several modifications and new scripts to enhance functionality.
+
+### Key Changes in this Fork
+*   **PIR Sensor Management (`pir_manager.py`):** A robust script to control the display and picframe service based on motion detection (PIR sensor) and a day/night schedule. It uses `cec-client` for display power and direct HTTP calls to control the slideshow, removing the need for an MQTT broker for this functionality.
+*   **Advanced Photo Sync (`sync_photos.sh`):** An improved script to synchronize photos from an SMB share, manage a local cache, and avoid repeating albums.
+*   **General stability improvements** and bug fixes.
+
+### Attribution
+*   **Author of modifications:** Martin Schmalohr (martin.schmalohr@gmx.de)
+*   **AI-assisted development:** Some of the scripts and modifications in this fork were developed with the assistance of Google's Gemini.

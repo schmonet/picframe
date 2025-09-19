@@ -4,6 +4,7 @@ import os
 import locale
 import sys
 from shutil import copytree
+import signal
 
 from picframe import model, viewer_display, controller, __version__
 
@@ -133,6 +134,11 @@ def main():
 
     v = viewer_display.ViewerDisplay(m.get_viewer_config())
     c = controller.Controller(m, v)
+
+    # Register signal handlers to stop the loop gracefully
+    signal.signal(signal.SIGINT, c._Controller__signal_handler)
+    signal.signal(signal.SIGTERM, c._Controller__signal_handler)
+
     c.start()
     c.loop()
     c.stop()

@@ -3,6 +3,7 @@ import os
 import time
 import logging
 import locale
+import random
 from picframe import geo_reverse, image_cache
 
 DEFAULT_CONFIGFILE = "~/picframe_data/config/configuration.yaml"
@@ -58,7 +59,7 @@ DEFAULT_CONFIG = {
     },
     'model': {
 
-        'pic_dir': '~/Pictures',
+        'pic_dir': '~/picframe_cache',
         'no_files_img': '~/picframe_data/data/no_pictures.jpg',
         'follow_links': False,
         'subdirectory': '',
@@ -85,6 +86,8 @@ DEFAULT_CONFIG = {
         'log_file': '',
         'location_filter': '',
         'tags_filter': '',
+        'delete_after_show': False,
+        'group_by_dir': False, # New option
     },
     'mqtt': {
         'use_mqtt': False,  # Set tue true, to enable mqtt
@@ -161,7 +164,8 @@ class Model:
             try:
                 conf = yaml.safe_load(stream)
                 for section in ['viewer', 'model', 'mqtt', 'http', 'peripherals']:
-                    self.__config[section] = {**DEFAULT_CONFIG[section], **conf[section]}
+                    self.__config[section] = {**DEFAULT_CONFIG[section], **conf.get(section, {})
+}
 
                 self.__logger.debug('config data = %s', self.__config)
             except yaml.YAMLError as exc:
@@ -210,6 +214,10 @@ class Model:
         self.__where_clauses = {}
         self.location_filter = model_config['location_filter']
         self.tags_filter = model_config['tags_filter']
+
+        self.__shown_albums_log_path = os.path.expanduser("~/shown_albums.log")
+        self.__shown_albums = self.__read_shown_albums_log()
+        self.__current_album_path = None
 
     def get_viewer_config(self):
         return self.__config['viewer']
@@ -383,12 +391,22 @@ class Model:
 
             # Reload the playlist if requested
             if self.__reload_files:
-                for _i in range(5):  # give image_cache chance on first load if a large directory
-                    self.__get_files()
+                # When reloading, the file list might be empty if a new album was just copied
+                # by the watcher but the image_cache hasn't finished processing it yet.
+                # We retry for a few seconds to give the cache time to catch up.
+                max_wait_time = 10 # seconds
+                start_time = time.time()
+                self.__logger.info("Reloading file list...")
+                while time.time() - start_time < max_wait_time:
+                    self.__get_files() # This queries the DB
                     missing_images = 0
                     if self.__number_of_files > 0:
+                        self.__logger.info("Reload successful, found %%d files.", self.__number_of_files)
                         break
-                    time.sleep(0.5)
+                    self.__logger.info("Reload attempt found no files. Retrying...")
+                    time.sleep(1) # Wait 1 second before retrying
+                else: # This 'else' belongs to the 'while' loop, executed if the loop finishes without break
+                    self.__logger.warning("Failed to reload file list after %%d seconds. No files found.", max_wait_time)
 
             # If we don't have any files to show, prepare the "no images" image
             # Also, set the reload_files flag so we'll check for new files on the next pass...
@@ -449,55 +467,132 @@ class Model:
         return self.__current_pics
 
     def delete_file(self):
-        # delete the current pic. If it's a portrait pair then only the left one will be deleted
-        pic = self.__current_pics[0]
-        if pic is None:
-            return None
-        f_to_delete = pic.fname
-        move_to_dir = os.path.expanduser(self.__deleted_pictures)
-        # TODO should these os system calls be inside a try block
-        # in case the file has been deleted after it started to show?
-        if not os.path.exists(move_to_dir):
-            os.system("mkdir {}".format(move_to_dir))  # problems with ownership using python func
-        os.system("mv '{}' '{}'".format(f_to_delete, move_to_dir))  # and with SMB drives
-        # find and delete record from __file_list
-        for i, file_rec in enumerate(self.__file_list):
-            if file_rec[0] == pic.file_id:  # database id TODO check that db tidies itself up
-                self.__file_list.pop(i)
-                self.__number_of_files -= 1
-                break
+        # This method is now called by the controller after a picture has been shown.
+        # It deletes the file(s) for the *current* slide.
+        if not self.get_model_config().get('delete_after_show', False):
+            return # Feature is disabled in config
+
+        for pic in self.__current_pics:
+            if pic is None or self.__no_files_img in pic.fname:
+                continue
+
+            f_to_delete = pic.fname
+
+            try:
+                if os.path.exists(f_to_delete):
+                    os.remove(f_to_delete)
+                    self.__logger.info("Permanently deleted file: %s", f_to_delete)
+                    # Immediately remove from image_cache database
+                    self.__image_cache.delete_file_from_db(pic.file_id)
+                else:
+                    self.__logger.warning("File not found for deletion: %s", f_to_delete)
+            except OSError as e:
+                self.__logger.error("Could not permanently delete file '%s': %s", f_to_delete, e)
+        
+        # After deletion, force a reload of the file list to ensure deleted files are not shown again.
+        # This also implicitly handles the removal from the internal __file_list.
+        self.force_reload()
 
     def __get_files(self):
         if self.subdirectory != "":
             picture_dir = os.path.join(self.__pic_dir, self.subdirectory)  # TODO catch, if subdirecotry does not exist
         else:
             picture_dir = self.__pic_dir
-        where_list = ["fname LIKE '{}/%'".format(picture_dir)]  # TODO / on end to stop 'test' also selecting test1 test2 etc  # noqa: E501
-        where_list.extend(self.__where_clauses.values())
 
-        if len(where_list) > 0:
-            where_clause = " AND ".join(where_list)  # TODO now always true - remove unreachable code
+        model_config = self.get_model_config()
+        group_by_dir = model_config['group_by_dir']
+        shuffle_global = model_config['shuffle'] # This is the global shuffle setting
+
+        if group_by_dir:
+            # Check if the current album is finished. An album is finished if the file list is empty.
+            # Because delete_after_show forces a reload, we must re-query the db to get the current state.
+            if self.__current_album_path:
+                where_clause_check = " AND ".join([f"fname LIKE '{self.__current_album_path}/%'"] + list(self.__where_clauses.values()))
+                if not self.__image_cache.query_cache(where_clause_check, "1"):
+                    self.__logger.info(f"Album '{self.__current_album_path}' is now empty. Selecting a new one.")
+                    self.__current_album_path = None  # Mark as finished
+
+            # If no album is selected (or the previous one finished), find and select a new one.
+            if not self.__current_album_path:
+                # Correctly identify albums at depth 2 ({YYYY}/{Ort})
+                all_albums = []
+                if os.path.isdir(picture_dir):
+                    for year_dir in os.listdir(picture_dir):
+                        year_path = os.path.join(picture_dir, year_dir)
+                        if os.path.isdir(year_path):
+                            for loc_dir in os.listdir(year_path):
+                                loc_path = os.path.join(year_path, loc_dir)
+                                if os.path.isdir(loc_path):
+                                    all_albums.append(loc_path)
+                
+                unshown_albums = [album for album in all_albums if album not in self.__shown_albums]
+
+                if not unshown_albums and all_albums:
+                    self.__logger.info("All albums shown. Resetting shown_albums.log.")
+                    self.__shown_albums.clear()
+                    self.__write_shown_albums_log()
+                    unshown_albums = all_albums
+
+                if unshown_albums:
+                    self.__current_album_path = random.choice(unshown_albums)
+                    self.__logger.info(f"Selected album for playback: {self.__current_album_path}")
+                    self.__shown_albums.add(self.__current_album_path)
+                    self.__write_shown_albums_log()
+                else:
+                    self.__logger.warning("No unshown albums found.")
+                    self.__file_list = [] # No albums available
+                    self.__number_of_files = 0
+                    self.__file_index = 0
+                    self.__reload_files = False
+                    return
+
+            # Now, get the sorted file list for the currently selected album.
+            if self.__current_album_path:
+                where_list = [f"fname LIKE '{self.__current_album_path}/%'"]
+                where_list.extend(self.__where_clauses.values())
+                where_clause = " AND ".join(where_list)
+
+                sort_list = []
+                if shuffle_global:
+                    sort_list.append("RANDOM()")
+                else:
+                    if self.__col_names is None:
+                        self.__col_names = self.__image_cache.get_column_names()
+                    for col in self.__sort_cols.split(","):
+                        colsplit = col.split()
+                        if colsplit[0] in self.__col_names and (len(colsplit) == 1 or colsplit[1].upper() in ("ASC", "DESC")):
+                            sort_list.append(col)
+                    sort_list.append("fname ASC")
+                sort_clause = ",".join(sort_list)
+
+                self.__file_list = self.__image_cache.query_cache(where_clause, sort_clause)
+            else:
+                self.__file_list = [] # Should not happen if albums were found
         else:
-            where_clause = "1"
+            # Existing logic for non-grouped display (flat list from pic_dir)
+            where_list = [f"fname LIKE '{picture_dir}/%'"]
+            where_list.extend(self.__where_clauses.values())
+            where_clause = " AND ".join(where_list) if len(where_list) > 0 else "1"
 
-        sort_list = []
-        recent_n = self.get_model_config()["recent_n"]
-        if recent_n > 0:
-            sort_list.append("last_modified < {:.0f}".format(time.time() - 3600 * 24 * recent_n))
+            sort_list = []
+            recent_n = model_config["recent_n"]
+            if recent_n > 0:
+                sort_list.append(f"last_modified < {time.time() - 3600 * 24 * recent_n:.0f}")
 
-        if self.shuffle:
-            sort_list.append("RANDOM()")
-        else:
-            if self.__col_names is None:
-                self.__col_names = self.__image_cache.get_column_names()  # do this once
-            for col in self.__sort_cols.split(","):
-                colsplit = col.split()
-                if colsplit[0] in self.__col_names and (len(colsplit) == 1 or colsplit[1].upper() in ("ASC", "DESC")):
-                    sort_list.append(col)
-            sort_list.append("fname ASC")  # always finally sort on this in case nothing else to sort on or sort_cols is "" # noqa: E501
-        sort_clause = ",".join(sort_list)
+            if shuffle_global:
+                sort_list.append("RANDOM()")
+            else:
+                if self.__col_names is None:
+                    self.__col_names = self.__image_cache.get_column_names()
+                for col in self.__sort_cols.split(","):
+                    colsplit = col.split()
+                    if colsplit[0] in self.__col_names and (len(colsplit) == 1 or colsplit[1].upper() in ("ASC", "DESC")):
+                        sort_list.append(col)
+                sort_list.append("fname ASC")
+            sort_clause = ",".join(sort_list)
 
-        self.__file_list = self.__image_cache.query_cache(where_clause, sort_clause)
+            self.__file_list = self.__image_cache.query_cache(where_clause, sort_clause)
+
         self.__number_of_files = len(self.__file_list)
         self.__file_index = 0
         self.__num_run_through = 0
@@ -507,3 +602,16 @@ class Model:
         random_bytes = os.urandom(length // 2)
         random_string = ''.join('{:02x}'.format(ord(chr(byte))) for byte in random_bytes)
         return random_string
+
+    def __read_shown_albums_log(self):
+        log_file = os.path.expanduser(self.__shown_albums_log_path)
+        if os.path.exists(log_file):
+            with open(log_file, 'r') as f:
+                return set(line.strip() for line in f if line.strip())
+        return set()
+
+    def __write_shown_albums_log(self):
+        log_file = os.path.expanduser(self.__shown_albums_log_path)
+        with open(log_file, 'w') as f:
+            for album in self.__shown_albums:
+                f.write(f"{album}\n")

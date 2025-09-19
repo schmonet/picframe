@@ -1,0 +1,73 @@
+Funktionsbeschreibung der geänderten und hinzugefügten Dateien:
+
+- change.log:
+  - Führt ein Protokoll über alle durchgeführten und geplanten Änderungen am Projekt, gruppiert nach Datum.
+
+- changes.txt:
+  - Diese Datei. Bietet eine fortlaufend aktualisierte Funktionsbeschreibung aller Dateien, die im Rahmen der Erweiterungen geändert oder hinzugefügt wurden.
+
+- src/picframe/model.py:
+  - Erweiterung der Kernlogik von picframe.
+  - `group_by_dir: True`: Implementiert die Logik, um alle Fotos aus einem zufällig ausgewählten Album-Ordner anzuzeigen, bevor ein neuer Ordner gewählt wird. Verhindert die Wiederholung von bereits gezeigten Alben durch Abgleich mit `shown_albums.log`. Passt das Verhalten von `shuffle` an, sodass nur innerhalb des Ordners gemischt wird.
+  - `delete_after_show: True`: Implementiert die Funktionalität, jede Bilddatei unmittelbar nach ihrer Anzeige endgültig vom Speichermedium zu löschen.
+  - `shown_albums.log`: Erstellt und verwaltet eine Log-Datei mit den Pfaden aller bereits gezeigten Alben, um deren erneute Auswahl durch `group_by_dir` zu verhindern.
+
+- src/picframe/config/configuration_example.yaml:
+  - Aktualisierte Beispiel-Konfiguration, um die neuen Optionen `group_by_dir` and `delete_after_show` aufzunehmen und deren Nutzung zu dokumentieren.
+
+- src/picframe/interface_mqtt.py:
+  - (Korrektur) Behebt einen `TypeError` beim Start, der durch die Verwendung von `|` für Union-Typen in älteren Python-Versionen verursacht wurde. Die Typ-Hinweise wurden auf die `Union`-Syntax aus dem `typing`-Modul umgestellt, um die Kompatibilität zu gewährleisten.
+
+- src/picframe/viewer_display.py:
+  - (Korrektur) Behebt ein Problem, bei dem der Ken-Burns-Effekt (Schwenken/Zoomen) im Pausenmodus weiterlief. Die Animation wird nun korrekt angehalten, wenn die Slideshow pausiert ist.
+
+- picframe_scripts/pir_manager.py:
+  - Steuert die Aktivität der Slideshow und des Displays basierend auf Bewegungserkennung und einem Zeitplan.
+  - (Korrektur) Die Steuerung wurde grundlegend überarbeitet:
+    - Der `HOLD`-Zustand (Pausieren) wird jetzt über einen direkten HTTP-Aufruf an den `picframe`-Webserver gesteuert, was einen MQTT-Broker überflüssig macht.
+    - Der `BLACK`-Zustand schaltet den Bildschirm direkt über `cec-client` ab.
+    - Die Display-Steuerung wurde generell auf `cec-client` umgestellt (vorher `kmsblank`).
+    - Benötigte Konfiguration (HTTP-Port) wird aus der zentralen `configuration.yaml` gelesen.
+  - (Korrektur) Behebt einen Fehler, bei dem der Inaktivitäts-Timer nach einem Systemneustart durch Zeitsprünge (NTP-Sync) fälschlicherweise ausgelöst wurde. Der Timer wird nun bei großen, unerwarteten Zeitsprüngen zurückgesetzt.
+  - (Korrektur) Verbessert die Stabilität beim Starten des picframe-Dienstes durch eine Wiederholungslogik, die sicherstellt, dass der HTTP-Befehl zum Aufheben der Pause erst gesendet wird, wenn der Dienst bereit ist.
+  - Prüft alle 15 Minuten den PIR-Sensor.
+  - `HOLD`: Pausiert die Diashow nach 1 Stunde ohne Bewegung.
+  - `BLACK`: Schaltet den Bildschirm nach 3 Stunden ohne Bewegung ab.
+  - `OFF`: Implementiert die Nachtschaltung (00:00-06:00), beendet den `picframe`-Dienst und schaltet das Display ab.
+  - Startet Dienst und Display bei Bewegung oder am Morgen automatisch.
+
+- picframe_scripts/sync_photos.sh:
+  - Synchronisiert Fotos von einer SMB-Freigabe in den lokalen Cache (`picframe_cache`).
+  - Wird stündlich per Cron-Job ausgeführt.
+  - Prüft vor dem Start, ob der in `sync_config.yaml` definierte Server erreichbar ist.
+  - Löscht zu Beginn alle leeren Verzeichnisse aus dem Cache.
+  - `filter_root_folders`: Filtert die Stammordner auf der Freigabe mithilfe eines regulären Ausdrucks, um z. B. nur Jahreszahlen zu berücksichtigen.
+  - Lädt zufällige Alben (`{YYYY}/{Ort}`) herunter, die noch nicht in `shown_albums.log` verzeichnet sind.
+  - `maxPicsPerAlbum`: Limitiert die Anzahl der heruntergeladenen Fotos pro Album, indem nur jede n-te Datei kopiert wird.
+  - Löscht Alben aus dem Cache, nachdem sie vollständig gezeigt und in `shown_albums.log` eingetragen wurden.
+
+- picframe_scripts/sync_config.yaml:
+  - Fügt die neue Option `filter_root_folders` hinzu.
+  - Benennt `shuffle_Folder_Root` in `shuffle_folder_root` und `shuffle_Album_Subfolder` in `shuffle_album_subfolder` um.
+
+- picframe_scripts/watcher.sh:
+  - Ein einfacher Wrapper-Dienst, der `picframe` nach dem Systemstart im Hintergrund startet und am Laufen hält.
+
+- picframe_scripts/install.sh:
+  - Installiert alle System- und Python-Abhängigkeiten.
+  - (Ergänzung) Fügt `cec-utils` zu den Systemabhängigkeiten hinzu.
+  - Richtet die `systemd`-Dienste für `picframe.service` (via watcher) und `pir_manager.service` ein.
+  - Gibt Anweisungen zur Einrichtung des Cron-Jobs für die Foto-Synchronisation.
+
+- picframe_scripts/test_pir.py:
+  - Ein Testskript, das die verschiedenen Zustände (`ON`, `HOLD`, `BLACK`, `OFF`) von `pir_manager.py` simuliert.
+  - Führt eine Sequenz von Aktionen aus, um den `picframe`-Dienst und das Display via `systemctl` und `cec-client` zu steuern.
+  - Simuliert den `HOLD`-Zustand durch einen direkten HTTP-Aufruf.
+  - Wartet zwischen den einzelnen Zuständen 10 Sekunden.
+  - Liest nach der Testsequenz kontinuierlich den Zustand des PIR-Sensors aus.
+
+- src/picframe/image_cache.py:
+  - Verwaltet eine SQLite-Datenbank als Cache für alle Bild-Metadaten, um das Einlesen zu beschleunigen.
+  - Läuft in einem eigenen Thread, um das Dateisystem periodisch auf neue oder geänderte Dateien zu scannen.
+  - Stellt Methoden zum Abfragen von Bildern und zum Löschen von Datenbankeinträgen bereit, die von `model.py` für Funktionen wie `group_by_dir` und `delete_after_show` genutzt werden.
+  - (Korrektur) Behebt einen Fehler, bei dem die Funktion zum Löschen eines Eintrags aus der Datenbank nicht korrekt in die Klasse eingebunden war.
