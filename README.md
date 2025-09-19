@@ -77,5 +77,5 @@ This repository is a fork of the original [picframe by helgeerbe](https://github
 *   **General stability improvements** and bug fixes.
 
 ### Attribution
-*   **Author of modifications:** schmonet (schmonet@users.noreply.github.com)
+*   **Author of modifications:** schmonet
 *   **AI-assisted development:** Some of the scripts and modifications in this fork were developed with the assistance of Google's Gemini.
