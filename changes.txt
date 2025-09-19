@@ -1,5 +1,9 @@
 Funktionsbeschreibung der geänderten und hinzugefügten Dateien:
 
+- README.md:
+  - Enthält eine allgemeine Beschreibung des Projekts, eine Liste der wichtigsten Funktionen und einen Verweis auf die Wiki-Dokumentation.
+  - Wurde um einen Abschnitt "Fork Information" erweitert, der die wichtigsten Änderungen in diesem Fork beschreibt und die Mitwirkenden (Martin Schmalohr, Google's Gemini) nennt.
+
 - change.log:
   - Führt ein Protokoll über alle durchgeführten und geplanten Änderungen am Projekt, gruppiert nach Datum.
 

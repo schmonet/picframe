@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# ========================================================================================
+#
+# Picframe Installation Script
+#
+# This script automates the setup of the Picframe application and its custom
+# modifications on a Raspberry Pi. It handles system dependencies, Python environment,
+# service creation, and configuration for the PIR sensor and photo synchronization.
+#
+# Author of modifications: Martin Schmalohr
+# AI-assisted development: Google's Gemini
+#
+# ========================================================================================
+
 # --- install.sh (v15, "Modell C" - Python-Managed Deletion) ---
 
 set -e

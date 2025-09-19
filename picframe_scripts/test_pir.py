@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+
+# ========================================================================================
+#
+# PIR Sensor and State Test Script for Picframe
+#
+# This script is a diagnostic tool for testing the PIR sensor and the different
+# power states managed by the `pir_manager.py` script. It allows you to manually
+# cycle through the ON, HOLD, BLACK, and OFF states to verify that the display,
+# service, and slideshow pause/resume commands are working as expected.
+# It also provides a continuous read-out of the PIR sensor's state.
+#
+# Author of modifications: Martin Schmalohr
+# AI-assisted development: Google's Gemini
+#
+# ========================================================================================
+
 import time
 import subprocess
 import yaml
