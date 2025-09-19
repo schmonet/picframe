@@ -74,6 +74,9 @@ This repository is a fork of the original [picframe by helgeerbe](https://github
 ### Key Changes in this Fork
 *   **PIR Sensor Management (`pir_manager.py`):** A robust script to control the display and picframe service based on motion detection (PIR sensor) and a day/night schedule. It uses `cec-client` for display power and direct HTTP calls to control the slideshow, removing the need for an MQTT broker for this functionality.
 *   **Advanced Photo Sync (`sync_photos.sh`):** An improved script to synchronize photos from an SMB share, manage a local cache, and avoid repeating albums.
+*   **New Slideshow Features:**
+    *   **Group by Folder (`group_by_dir`):** Displays all photos from one album before moving to the next.
+    *   **Delete After Show (`delete_after_show`):** Option to permanently delete photos from the cache after they have been displayed.
 *   **General stability improvements** and bug fixes.
 
 ### Attribution
