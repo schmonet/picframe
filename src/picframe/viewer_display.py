@@ -433,7 +433,7 @@ class ViewerDisplay:
         if len(final_string) > 0:
             wdt_offset = int(self.__display.width * self.__text_wdt_offset_pct / 100)
             if side == 0 and not pair:
-                c_rng = self.__display.width - wdt_offset  # range for x loc from L to R justified
+                c_rng = self.__display.width - (wdt_offset * 2)  # range for x loc from L to R justified
             else:
                 c_rng = self.__display.width * 0.5 - wdt_offset  # range for x loc from L to R justified
             opacity = int(255 * float(self.__text_opacity) * self.get_brightness())
@@ -466,7 +466,7 @@ class ViewerDisplay:
             # Calculate width and height offsets based on percents from configuration.yaml
             wdt_offset = int(self.__display.width * self.__clock_wdt_offset_pct / 100)
             hgt_offset = int(self.__display.height * self.__clock_hgt_offset_pct / 100)
-            width = self.__display.width - wdt_offset
+            width = self.__display.width - (wdt_offset * 2)
             # check if /dev/shm/clock.txt exists, if so add it to current_time
             clock_text = current_time
             if os.path.isfile("/dev/shm/clock.txt"):
