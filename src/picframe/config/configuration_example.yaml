@@ -13,6 +13,7 @@ viewer:
   show_text_sz: 40                        # default=40, text character size
   show_text: "title caption name date folder location"  # default="title caption name date folder location", show text, include combination of words: title, caption name, date, location, folder
   text_justify: "L"                       # text justification L, C or R
+  text_wdt_offset_pct: 3.0                # default=3.0 (1.0-10.0), used to calclate pixels between text and side of screen
   text_bkg_hgt: 0.25                      # default=0.25 (0.0-1.0), percentage of screen height for text background texture
   text_opacity: 1.0                       # default=1.0 (0.0-1.0), alpha value of text overlay
   fit: False                              # default=False, True => scale image so all visible and leave 'gaps'
@@ -20,6 +21,7 @@ viewer:
   video_fit_display: False                # default=False, True => scale video to match display size (video may have distortion)
                                           #                False => scale video without distortion (video may have black bars)
   kenburns: False                         # default=False, will set fit->False and blur_edges->False
+  crop_to_aspect_ratio: null              # default=null, force cropping of images to a certain aspect ratio, i.e. "4:3"
   display_x: 0                            # offset from left of screen (can be negative)
   display_y: 0                            # offset from top of screen (can be negative)
   display_w: null                         # width of display surface (null->None will use max returned by hardware)
