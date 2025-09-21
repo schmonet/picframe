@@ -24,7 +24,11 @@ import urllib.error
 
 try:
     import RPi.GPIO as GPIO
-except Exception:
+except Exception as e:
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    print(f"!!! CRITICAL: Failed to import RPi.GPIO. Using mock library.!!!")
+    print(f"!!! Motion detection will not work. Error: {e}              !!!")
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     class MockGPIO:
         BCM = 0
         IN = 0
@@ -42,7 +46,7 @@ HOLDSCRREN_TIMEOUT_S = 3600  # 1 hour of inactivity to pause the slideshow
 BLACKSCREEN_TIMEOUT_S = 10800  # 3 hours of inactivity for a black screen
 NIGHT_START_HOUR = 0  # 00:00
 NIGHT_END_HOUR = 6    # 06:00
-LOOP_SLEEP_S = 2      # Time between checks (2 seconds)
+LOOP_SLEEP_S = 5.0    # Time between checks (5.0 seconds)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "/home/schmali/picframe_data/config/configuration.yaml"
 
@@ -81,15 +85,23 @@ def set_pause(pause: bool, port: int):
     try:
         print(f"Sending HTTP request to {url}")
         with urllib.request.urlopen(url, timeout=10) as response:
-            if response.status == 200:
+            status_code = response.status
+            print(f"Received response with status: {status_code}")
+            if status_code == 200:
                 return True
             else:
-                print(f"Error: Received status code {response.status} from {url}")
+                print(f"Error: Received status code {status_code} from {url}")
+                try:
+                    body = response.read().decode('utf-8', errors='ignore')
+                    print(f"Response body: {body}")
+                except Exception as read_e:
+                    print(f"Could not read response body: {read_e}")
                 return False
     except urllib.error.URLError as e:
-        # Only log the error if it's not a connection refusal, which we expect during startup
-        if "Connection refused" not in str(e):
-            print(f"Error sending HTTP request to {url}: {e}")
+        print(f"Error sending HTTP request to {url}: {e}")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred in set_pause: {e}")
         return False
 
 def set_pause_with_retry(pause: bool, port: int):
@@ -125,6 +137,7 @@ def main():
     
     last_motion_time = time.monotonic()
     current_state = STATE_ON
+    last_motion_state = False
     
     print("---PIR Manager Started---")
     set_display_power(True) # Ensure display is on at start
@@ -153,8 +166,11 @@ def main():
                     else:  # Covers STATE_BLACK and STATE_HOLD
                         if current_state == STATE_BLACK:
                             set_display_power(True)
-                        set_pause(False, http_port) # Always unpause if not OFF
+                        set_pause_with_retry(False, http_port) # Always unpause if not OFF
                     current_state = STATE_ON
+                else: # current_state is STATE_ON
+                    if not last_motion_state: # and last state was no motion
+                        print("Motion detected (normal operation). Resetting inactivity timer.")
             else:  # No motion
                 if current_state == STATE_OFF and not is_night:
                     print("Day time. Resuming normal operation.")
@@ -178,9 +194,10 @@ def main():
                 elif inactivity_time > HOLDSCRREN_TIMEOUT_S:
                     if current_state != STATE_HOLD and current_state != STATE_BLACK:
                         print(f"Inactivity for {int(inactivity_time/60)}min. Entering Holdscreen mode.")
-                        set_pause(True, http_port)
+                        set_pause_with_retry(True, http_port)
                         current_state = STATE_HOLD
             
+            last_motion_state = motion_detected
             time.sleep(LOOP_SLEEP_S)
 
     except KeyboardInterrupt:
