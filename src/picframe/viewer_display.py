@@ -60,12 +60,20 @@ class ViewerDisplay:
         self.__show_text_sz = config['show_text_sz']
         self.__show_text = parse_show_text(config['show_text'])
         self.__text_justify = config['text_justify'].upper()
+        self.__text_wdt_offset_pct = config.get('text_wdt_offset_pct', 3.0)
         self.__text_bkg_hgt = config['text_bkg_hgt'] if 0 <= config['text_bkg_hgt'] <= 1 else 0.25
         self.__text_opacity = config['text_opacity']
         self.__fit = config['fit']
         self.__video_fit_display = config['video_fit_display']
         self.__geo_suppress_list = config['geo_suppress_list']
         self.__kenburns = config['kenburns']
+        self.__crop_ar = None
+        if 'crop_to_aspect_ratio' in config and config['crop_to_aspect_ratio']:
+            try:
+                w, h = map(float, config['crop_to_aspect_ratio'].split(':'))
+                if h > 0: self.__crop_ar = w / h
+            except Exception as e:
+                self.__logger.warning("Could not parse crop_to_aspect_ratio: %s", e)
         if self.__kenburns:
             self.__kb_up = True
             self.__fit = False
@@ -326,6 +334,19 @@ class ViewerDisplay:
                 if pics[0].orientation != 1:
                     im = self.__orientate_image(im, pics[0])
 
+            if self.__crop_ar is not None:
+                image_ar = im.width / im.height
+                # crop width if image is wider than target
+                if (image_ar / self.__crop_ar) > 1.01: # more than 1% different
+                    new_width = self.__crop_ar * im.height
+                    left = (im.width - new_width) / 2
+                    im = im.crop((left, 0, left + new_width, im.height))
+                # crop height if image is taller than target
+                elif (self.__crop_ar / image_ar) > 1.01: # more than 1% different
+                    new_height = im.width / self.__crop_ar
+                    top = (im.height - new_height) / 2
+                    im = im.crop((0, top, im.width, top + new_height))
+
             if pics[1]:
                 im2 = get_image_meta.GetImageMeta.get_image_object(pics[1].fname)
                 if im2 is None:
@@ -410,10 +431,11 @@ class ViewerDisplay:
 
         block = None
         if len(final_string) > 0:
+            wdt_offset = int(self.__display.width * self.__text_wdt_offset_pct / 100)
             if side == 0 and not pair:
-                c_rng = self.__display.width - 100  # range for x loc from L to R justified
+                c_rng = self.__display.width - wdt_offset  # range for x loc from L to R justified
             else:
-                c_rng = self.__display.width * 0.5 - 100  # range for x loc from L to R justified
+                c_rng = self.__display.width * 0.5 - wdt_offset  # range for x loc from L to R justified
             opacity = int(255 * float(self.__text_opacity) * self.get_brightness())
             block = pi3d.FixedString(self.__font_file, final_string, shadow_radius=3, font_size=self.__show_text_sz,
                                      shader=self.__flat_shader, justify=self.__text_justify, width=c_rng,
