@@ -33,7 +33,7 @@ echo "Starting Picframe Final Setup for user 'schmali' (Python-Managed Deletion)
 # 1. Install system dependencies
 echo "[1/9] Installing system dependencies..."
 sudo apt-get update
-sudo apt-get install -y git python3-pip python3-venv cifs-utils bc vlc libsdl2-dev python3-rpi.gpio cec-utils
+sudo apt-get install -y git python3-pip python3-venv cifs-utils bc vlc libsdl2-dev python3-rpi.gpio cec-utils edid-decode
 
 # 2. Set system locale
 echo "[2/9] Setting system locale to de_DE.UTF-8..."

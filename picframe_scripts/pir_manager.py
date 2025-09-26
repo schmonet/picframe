@@ -42,11 +42,11 @@ except Exception as e:
 
 # --- Configuration ---
 PIR_PIN = 4  # GPIO pin of the PIR sensor
-HOLDSCRREN_TIMEOUT_S = 3600  # 1 hour of inactivity to pause the slideshow
-BLACKSCREEN_TIMEOUT_S = 10800  # 3 hours of inactivity for a black screen
+HOLDSCRREN_TIMEOUT_S = 1800   # 30 min of inactivity to pause the slideshow
+BLACKSCREEN_TIMEOUT_S = 3600  # 1 hour of inactivity for a black screen
 NIGHT_START_HOUR = 0  # 00:00
-NIGHT_END_HOUR = 6    # 06:00
-LOOP_SLEEP_S = 10.0    # Time between checks (5.0 seconds)
+NIGHT_END_HOUR = 7    # 07:00
+LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "/home/schmali/picframe_data/config/configuration.yaml"
 
