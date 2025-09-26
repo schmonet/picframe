@@ -36,8 +36,8 @@ Funktionsbeschreibung der geänderten und hinzugefügten Dateien:
   - (Korrektur) Behebt einen Fehler, bei dem der Inaktivitäts-Timer durch die Verwendung von `time.time()` anstelle von `time.monotonic()` unzuverlässig war. Die Zeitmessung wurde auf `time.monotonic()` umgestellt, um sie von Systemzeit-Änderungen (z.B. NTP-Sync) unabhängig zu machen. Dies verhindert, dass der Timer fälschlicherweise zurückgesetzt wird und stellt sicher, dass der Bildschirm bei Inaktivität wie erwartet ausgeschaltet wird.
   - (Korrektur) Verbessert die Stabilität beim Starten des picframe-Dienstes durch eine Wiederholungslogik, die sicherstellt, dass der HTTP-Befehl zum Aufheben der Pause erst gesendet wird, wenn der Dienst bereit ist.
   - Prüft alle 15 Minuten den PIR-Sensor.
-  - `HOLD`: Pausiert die Diashow nach 1 Stunde ohne Bewegung.
-  - `BLACK`: Schaltet den Bildschirm nach 3 Stunden ohne Bewegung ab.
+  - `HOLD`: Pausiert die Diashow nach 30 Minuten ohne Bewegung.
+  - `BLACK`: Schaltet den Bildschirm nach 1 Stunde ohne Bewegung ab.
   - `OFF`: Implementiert die Nachtschaltung (00:00-06:00), beendet den `picframe`-Dienst und schaltet das Display ab.
   - Startet Dienst und Display bei Bewegung oder am Morgen automatisch.
 
@@ -61,6 +61,7 @@ Funktionsbeschreibung der geänderten und hinzugefügten Dateien:
 - picframe_scripts/install.sh:
   - Installiert alle System- und Python-Abhängigkeiten.
   - (Ergänzung) Fügt `cec-utils` zu den Systemabhängigkeiten hinzu.
+  - (Ergänzung) Fügt `edid-decode` zu den Systemabhängigkeiten hinzu.
   - Richtet die `systemd`-Dienste für `picframe.service` (via watcher) und `pir_manager.service` ein.
   - Gibt Anweisungen zur Einrichtung des Cron-Jobs für die Foto-Synchronisation.
 
