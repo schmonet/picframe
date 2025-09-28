@@ -4,8 +4,16 @@ varying vec2 texcoordoutf;
 varying vec2 texcoordoutb;
 
 void main(void) {
-  texcoordoutf = texcoord * unif[14].xy - unif[16].xy;
-  texcoordoutb = texcoord * unif[15].xy - unif[17].xy;
+  // Foreground
+  vec2 scale_f = unif[14].xy;
+  vec2 offset_f = unif[16].xy;
+  texcoordoutf = texcoord * scale_f - (scale_f - 1.0) / 2.0 - offset_f;
+  
+  // Background
+  vec2 scale_b = unif[15].xy;
+  vec2 offset_b = vec2(unif[16].z, unif[17].x);
+  texcoordoutb = texcoord * scale_b - (scale_b - 1.0) / 2.0 - offset_b;
+
   gl_Position = modelviewmatrix[1] * vec4(vertex,1.0);
   dist = gl_Position.z;
   gl_PointSize = unib[2][2] / dist;
