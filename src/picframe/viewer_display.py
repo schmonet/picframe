@@ -390,7 +390,7 @@ class ViewerDisplay:
                     im_b.paste(im, box=(round(0.5 * (im_b.size[0] - im.size[0])),
                                         round(0.5 * (im_b.size[1] - im.size[1]))))
                     im = im_b  # have to do this as paste applies in place
-            tex = pi3d.Texture(im, blend=True, m_repeat=True, free_after_load=True)
+            tex = pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=True)
         except Exception as e:
             self.__logger.warning("Can't create tex from file: \"%s\" or \"%s\"", pics[0].fname, pics[1])
             self.__logger.warning("Cause: %s", e)
@@ -580,8 +580,8 @@ class ViewerDisplay:
             if frames is not None:
                 frame_first, frame_last = frames
                 # Create textures for the first and last frames
-                first_frame_tex = pi3d.Texture(frame_first, blend=True, m_repeat=True, free_after_load=True)
-                last_frame_tex = pi3d.Texture(frame_last, blend=True, m_repeat=True, free_after_load=True)
+                first_frame_tex = pi3d.Texture(frame_first, blend=True, m_repeat=False, free_after_load=True)
+                last_frame_tex = pi3d.Texture(frame_last, blend=True, m_repeat=False, free_after_load=True)
                 return first_frame_tex, last_frame_tex
             else:
                 self.__logger.warning("Failed to retrieve frames from video: %s", video_path)
