@@ -1,4 +1,17 @@
-#include std_head_fs.inc
+// ----- boiler-plate code for fragment shader variable definition
+#version 120
+
+uniform sampler2D tex0;
+uniform sampler2D tex1;
+uniform sampler2D tex2;
+uniform vec3 unib[5];
+uniform vec3 unif[20];
+
+varying float dist;
+varying float fog_start;
+varying float is_3d;
+
+// End of std_head_fs.inc
 
 varying vec2 texcoordoutf;
 varying vec2 texcoordoutb;
@@ -32,7 +45,5 @@ void main(void) {
     float ffact = dot(light, texf);
     gl_FragColor = mix(texb * (1.0 + a * (ffact - 1.0)), texf, clamp(2.0 * a - 1.0, 0.0, 1.0));
   }
-  // TINT RED FOR DEBUGGING
-  gl_FragColor.rgb *= vec3(1.0, 0.2, 0.2);
   gl_FragColor.rgb *= unif[18][1]; // brightness passed in Shape.unif[55] 0.0 to 1.0
 }

@@ -1,4 +1,19 @@
-#include std_head_vs.inc
+// ----- boiler-plate code for vertex shader variable definition
+#version 120
+
+attribute vec3 vertex;
+attribute vec3 normal;
+attribute vec2 texcoord;
+
+uniform mat4 modelviewmatrix[3];
+uniform vec3 unib[5];
+uniform vec3 unif[20];
+
+varying float dist;
+varying float fog_start;
+varying float is_3d;
+
+// End of std_head_vs.inc
 
 varying vec2 texcoordoutf;
 varying vec2 texcoordoutb;
