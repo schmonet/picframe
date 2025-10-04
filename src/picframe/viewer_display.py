@@ -2,6 +2,7 @@ import time
 import subprocess
 import logging
 import os
+import random
 from typing import Optional, List, Tuple
 from datetime import datetime
 from PIL import Image, ImageFilter, ImageFile
@@ -74,10 +75,20 @@ class ViewerDisplay:
                 if h > 0: self.__crop_ar = w / h
             except Exception as e:
                 self.__logger.warning("Could not parse crop_to_aspect_ratio: %s", e)
+
         if self.__kenburns:
-            self.__kb_up = True
+            self.__kb_zoom_direction = config.get('kenburns_zoom_direction', 'random')
+            self.__kb_scroll_direction = config.get('kenburns_scroll_direction', 'random')
+            self.__kb_zoom_pct = abs(config.get('kenburns_zoom_pct', 10.0))
+            self.__kb_landscape_wobble_pct = abs(config.get('kenburns_landscape_wobble_pct', 5.0))
+            self.__kb_portrait_wobble_pct = abs(config.get('kenburns_portrait_wobble_pct', 5.0))
+            self.__kb_random_pan = config.get('kenburns_random_pan', True)
+            self.__kb_portrait_border_pct = abs(config.get('kenburns_portrait_border_pct', 20.0))
+            self.__kb_current_state = {}
+            self.__kb_previous_state = {}
             self.__fit = False
             self.__blur_edges = False
+
         if self.__blur_zoom < 1.0:
             self.__blur_zoom = 1.0
         self.__display_x = int(config['display_x'])
@@ -92,8 +103,6 @@ class ViewerDisplay:
         self.__display = None
         self.__slide = None
         self.__flat_shader = None
-        self.__xstep = None
-        self.__ystep = None
         self.__textblocks = [None, None]
         self.__text_bkg = None
         self.__sfg = None  # slide for background
@@ -222,16 +231,16 @@ class ViewerDisplay:
                 txt.sprite.set_alpha(val)
 
     def get_brightness(self):
-        return round(self.__slide.unif[55], 2)  # this will still give 32/64 bit differences sometimes, as will the float(format()) system # noqa: E501
+        return round(self.__slide.unif[55], 2)
 
-    def set_matting_images(self, val):  # needs to cope with "true", "ON", 0, "0.2" etc.
+    def set_matting_images(self, val):
         try:
             float_val = float(val)
-            if round(float_val, 4) == 0.0:  # pixellish over a 4k monitor
+            if round(float_val, 4) == 0.0:
                 val = "true"
             if round(float_val, 4) == 1.0:
                 val = "false"
-        except Exception:  # ignore exceptions, error handling is done in following function
+        except Exception:
             pass
         self.__mat_images, self.__mat_images_tol = self.__get_mat_image_control_values(val)
 
@@ -251,11 +260,8 @@ class ViewerDisplay:
     def clock_is_on(self, val):
         self.__show_clock = val
 
-    # Concatenate the specified images horizontally. Clip the taller
-    # image to the height of the shorter image.
     def __create_image_pair(self, im1, im2):
-        sep = 8  # separation between the images
-        # scale widest image to same width as narrower to avoid drastic cropping on mismatched images
+        sep = 8
         if im1.width > im2.width:
             im1 = im1.resize((im2.width, int(im1.height * im2.width / im1.width)), resample=Image.BICUBIC)
         else:
@@ -267,13 +273,13 @@ class ViewerDisplay:
 
     def __orientate_image(self, im, pic):
         ext = os.path.splitext(pic.fname)[1].lower()
-        if ext in ('.heif', '.heic'):  # heif and heic images are converted to PIL.Image obects and are alway in correct orienation # noqa: E501
+        if ext in ('.heif', '.heic'):
             return im
         orientation = pic.orientation
         if orientation == 2:
             im = im.transpose(Image.FLIP_LEFT_RIGHT)
         elif orientation == 3:
-            im = im.transpose(Image.ROTATE_180)  # rotations are clockwise
+            im = im.transpose(Image.ROTATE_180)
         elif orientation == 4:
             im = im.transpose(Image.FLIP_TOP_BOTTOM)
         elif orientation == 5:
@@ -304,14 +310,13 @@ class ViewerDisplay:
     def __get_aspect_diff(self, screen_size, image_size):
         screen_aspect = screen_size[0] / screen_size[1]
         image_aspect = image_size[0] / image_size[1]
-
         if screen_aspect > image_aspect:
             diff_aspect = 1 - (image_aspect / screen_aspect)
         else:
             diff_aspect = 1 - (screen_aspect / image_aspect)
         return (screen_aspect, image_aspect, diff_aspect)
 
-    def __tex_load(self, pics, size=None):  # noqa: C901
+    def __tex_load(self, pics, size=None):
         try:
             self.__logger.debug(f"loading images: {pics[0].fname} {pics[1].fname if pics[1] else ''}")
             if self.__mat_images and self.__matter is None:
@@ -326,7 +331,6 @@ class ViewerDisplay:
                     outer_mat_use_texture=self.__outer_mat_use_texture,
                     inner_mat_use_texture=self.__inner_mat_use_texture)
 
-            # Load the image(s) and correct their orientation as necessary
             if pics[0]:
                 im = get_image_meta.GetImageMeta.get_image_object(pics[0].fname)
                 if im is None:
@@ -336,13 +340,11 @@ class ViewerDisplay:
 
             if self.__crop_ar is not None:
                 image_ar = im.width / im.height
-                # crop width if image is wider than target
-                if (image_ar / self.__crop_ar) > 1.01: # more than 1% different
+                if (image_ar / self.__crop_ar) > 1.01:
                     new_width = self.__crop_ar * im.height
                     left = (im.width - new_width) / 2
                     im = im.crop((left, 0, left + new_width, im.height))
-                # crop height if image is taller than target
-                elif (self.__crop_ar / image_ar) > 1.01: # more than 1% different
+                elif (self.__crop_ar / image_ar) > 1.01:
                     new_height = im.width / self.__crop_ar
                     top = (im.height - new_height) / 2
                     im = im.crop((0, top, im.width, top + new_height))
@@ -362,7 +364,7 @@ class ViewerDisplay:
                 else:
                     im = self.__matter.mat_image((im, im2))
             else:
-                if pics[1]:  # i.e portrait pair
+                if pics[1]:
                     im = self.__create_image_pair(im, im2)
 
             (w, h) = im.size
@@ -372,7 +374,7 @@ class ViewerDisplay:
                 if diff_aspect > 0.01:
                     (sc_b, sc_f) = (size[1] / im.size[1], size[0] / im.size[0])
                     if screen_aspect > image_aspect:
-                        (sc_b, sc_f) = (sc_f, sc_b)  # swap round
+                        (sc_b, sc_f) = (sc_f, sc_b)
                     (w, h) = (round(size[0] / sc_b / self.__blur_zoom), round(size[1] / sc_b / self.__blur_zoom))
                     (x, y) = (round(0.5 * (im.size[0] - w)), round(0.5 * (im.size[1] - h)))
                     box = (x, y, x + w, y + h)
@@ -380,50 +382,39 @@ class ViewerDisplay:
                     im_b = im.resize(size, resample=0, box=box).resize(blr_sz)
                     im_b = im_b.filter(ImageFilter.GaussianBlur(self.__blur_amount))
                     im_b = im_b.resize(size, resample=Image.BICUBIC)
-                    im_b.putalpha(round(255 * self.__edge_alpha))  # to apply the same EDGE_ALPHA as the no blur method.
+                    im_b.putalpha(round(255 * self.__edge_alpha))
                     im = im.resize([int(x * sc_f) for x in im.size], resample=Image.BICUBIC)
-                    """resize can use Image.LANCZOS (alias for Image.ANTIALIAS) for resampling
-                    for better rendering of high-contranst diagonal lines. NB downscaled large
-                    images are rescaled near the start of this try block if w or h > max_dimension
-                    so those lines might need changing too.
-                    """
                     im_b.paste(im, box=(round(0.5 * (im_b.size[0] - im.size[0])),
                                         round(0.5 * (im_b.size[1] - im.size[1]))))
-                    im = im_b  # have to do this as paste applies in place
+                    im = im_b
             tex = pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=True)
         except Exception as e:
             self.__logger.warning("Can't create tex from file: \"%s\" or \"%s\"", pics[0].fname, pics[1])
             self.__logger.warning("Cause: %s", e)
             tex = None
-            # raise # only re-raise errors here while debugging
         return tex
 
-    def __make_text(self, pic, paused, side=0, pair=False):  # noqa: C901
-        # if side 0 and pair False then this is a full width text and put into
-        # __textblocks[0] otherwise it is half width and put into __textblocks[position]
+    def __make_text(self, pic, paused, side=0, pair=False):
         info_strings = []
-        if pic is not None and (self.__show_text > 0 or paused):  # was SHOW_TEXT_TM > 0.0
-            if (self.__show_text & 1) == 1 and pic.title is not None:  # title
+        if pic is not None and (self.__show_text > 0 or paused):
+            if (self.__show_text & 1) == 1 and pic.title is not None:
                 info_strings.append(pic.title)
-            if (self.__show_text & 2) == 2 and pic.caption is not None:  # caption
+            if (self.__show_text & 2) == 2 and pic.caption is not None:
                 info_strings.append(pic.caption)
-            if (self.__show_text & 4) == 4:  # name
+            if (self.__show_text & 4) == 4:
                 info_strings.append(os.path.basename(pic.fname))
-            if (self.__show_text & 8) == 8 and pic.exif_datetime > 0:  # date
+            if (self.__show_text & 8) == 8 and pic.exif_datetime > 0:
                 fdt = time.strftime(self.__show_text_fm, time.localtime(pic.exif_datetime))
                 info_strings.append(fdt)
-            if (self.__show_text & 16) == 16 and pic.location is not None:  # location
+            if (self.__show_text & 16) == 16 and pic.location is not None:
                 location = pic.location
-                # search for and remove substrings from the location text
                 if self.__geo_suppress_list is not None:
                     for part in self.__geo_suppress_list:
                         location = location.replace(part, "")
-                    # remove any redundant concatination strings once the substrings have been removed
                     location = location.replace(" ,", "")
-                    # remove any trailing commas or spaces from the location
                     location = location.strip(", ")
-                info_strings.append(location)  # TODO need to sanitize and check longer than 0 for real
-            if (self.__show_text & 32) == 32:  # folder
+                info_strings.append(location)
+            if (self.__show_text & 32) == 32:
                 info_strings.append(os.path.basename(os.path.dirname(pic.fname)))
             if paused:
                 info_strings.append("PAUSED")
@@ -433,19 +424,19 @@ class ViewerDisplay:
         if len(final_string) > 0:
             wdt_offset = int(self.__display.width * self.__text_wdt_offset_pct / 100)
             if side == 0 and not pair:
-                c_rng = self.__display.width - (wdt_offset * 2)  # range for x loc from L to R justified
+                c_rng = self.__display.width - (wdt_offset * 2)
             else:
-                c_rng = self.__display.width * 0.5 - wdt_offset  # range for x loc from L to R justified
+                c_rng = self.__display.width * 0.5 - wdt_offset
             opacity = int(255 * float(self.__text_opacity) * self.get_brightness())
             block = pi3d.FixedString(self.__font_file, final_string, shadow_radius=3, font_size=self.__show_text_sz,
                                      shader=self.__flat_shader, justify=self.__text_justify, width=c_rng,
                                      color=(255, 255, 255, opacity))
-            adj_x = (c_rng - block.sprite.width) // 2  # half amount of space outside sprite
+            adj_x = (c_rng - block.sprite.width) // 2
             if self.__text_justify == "L":
                 adj_x *= -1
             elif self.__text_justify == "C":
                 adj_x = 0
-            if side == 0 and not pair:  # i.e. full width
+            if side == 0 and not pair:
                 x = adj_x
             else:
                 x = adj_x + int(self.__display.width * 0.25 * (-1.0 if side == 0 else 1.0))
@@ -458,16 +449,10 @@ class ViewerDisplay:
 
     def __draw_clock(self):
         current_time = datetime.now().strftime(self.__clock_format)
-
-        # --- Only rebuild the FixedString containing the time valud if the time string has changed.
-        #     With the default H:M display, this will only rebuild once each minute. Note however,
-        #     time strings containing a "seconds" component will rebuild once per second.
         if current_time != self.__prev_clock_time:
-            # Calculate width and height offsets based on percents from configuration.yaml
             wdt_offset = int(self.__display.width * self.__clock_wdt_offset_pct / 100)
             hgt_offset = int(self.__display.height * self.__clock_hgt_offset_pct / 100)
             width = self.__display.width - (wdt_offset * 2)
-            # check if /dev/shm/clock.txt exists, if so add it to current_time
             clock_text = current_time
             if os.path.isfile("/dev/shm/clock.txt"):
                 with open("/dev/shm/clock.txt", "r") as f:
@@ -485,10 +470,9 @@ class ViewerDisplay:
                 x = 0
             y = (self.__display.height
                  - self.__clock_overlay.sprite.height
-                 + self.__clock_text_sz * 0.5
+                 - self.__clock_text_sz * 0.5
                  - hgt_offset
                  ) // 2
-            # Handle whether to draw the clock at top or bottom
             if self.__clock_top_bottom == "B":
                 y *= -1
             self.__clock_overlay.sprite.position(x, y, 0.1)
@@ -498,26 +482,23 @@ class ViewerDisplay:
             self.__clock_overlay.sprite.draw()
 
     def __draw_overlay(self):
-        # Very simple function pasting the overlay_file below over the main picture but beneath
-        # the clock and the image info text. The user must make the image transparent as needed
-        # and the correct aspect ratio for the screen. The image will be scaled to the screen size
-        overlay_file = "/dev/shm/overlay.png"  # TODO make this user configurable?
-        if not os.path.isfile(overlay_file):  # empty file used as flag to return early
+        overlay_file = "/dev/shm/overlay.png"
+        if not os.path.isfile(overlay_file):
             self.__image_overlay = None
             return
         change_time = os.path.getmtime(overlay_file)
-        if self.__prev_overlay_time is None or self.__prev_overlay_time < change_time:  # load Texture
+        if self.__prev_overlay_time is None or self.__prev_overlay_time < change_time:
             self.__prev_overlay_time = change_time
             overlay_texture = pi3d.Texture(overlay_file,
-                                           blend=False,  # TODO check generally OK with blend=False
+                                           blend=False,
                                            free_after_load=True,
                                            mipmap=False)
             self.__image_overlay = pi3d.Sprite(w=self.__display.width,
                                                h=self.__display.height,
-                                               z=4.1)  # just behind text_bkg
+                                               z=4.1)
             self.__image_overlay.set_draw_details(self.__flat_shader, [overlay_texture])
             self.__image_overlay.set_alpha(self.get_brightness())
-        if self.__image_overlay is not None:  # shouldn't be possible to get here otherwise, but just in case!
+        if self.__image_overlay is not None:
             self.__image_overlay.draw()
 
     @property
@@ -558,19 +539,6 @@ class ViewerDisplay:
             self.__text_bkg.set_draw_details(self.__flat_shader, [text_bkg_tex])
 
     def __load_video_frames(self, video_path: str) -> Optional[tuple[pi3d.Texture, pi3d.Texture]]:
-        """
-        Load the first and last frames of a video and create textures.
-
-        Parameters:
-        -----------
-        video_path : str
-            The path to the video file.
-
-        Returns:
-        --------
-        Optional[tuple[pi3d.Texture, pi3d.Texture]]
-            A tuple containing textures for the first and last frames, or None if loading fails.
-        """
         try:
             self.__logger.debug("Loading video frames: %s", video_path)
             extractor = VideoFrameExtractor(
@@ -579,7 +547,6 @@ class ViewerDisplay:
             frames = extractor.get_first_and_last_frames()
             if frames is not None:
                 frame_first, frame_last = frames
-                # Create textures for the first and last frames
                 first_frame_tex = pi3d.Texture(frame_first, blend=True, m_repeat=False, free_after_load=True)
                 last_frame_tex = pi3d.Texture(frame_last, blend=True, m_repeat=False, free_after_load=True)
                 return first_frame_tex, last_frame_tex
@@ -594,125 +561,90 @@ class ViewerDisplay:
     def slideshow_is_running(self, pics: Optional[List[Optional[get_image_meta.GetImageMeta]]] = None,
                              time_delay: float = 200.0, fade_time: float = 10.0,
                              paused: bool = False) -> Tuple[bool, bool, bool]:
-        """
-        Handles the slideshow logic, including transitioning between images or videos.
-
-        Parameters:
-        -----------
-        pics : Optional[List[Optional[get_image_meta.GetImageMeta]]], optional
-            A list of pictures to display. The first item in the list is the primary image or video.
-        time_delay : float, optional
-            The time in seconds to display each image or video before transitioning to the next.
-        fade_time : float, optional
-            The duration of the fade transition between images or videos.
-        paused : bool, optional
-            If True, pauses the slideshow.
-
-        Returns:
-        --------
-        Tuple[bool, bool, bool]
-            A tuple containing:
-            - Whether the slideshow loop is running.
-            - Whether to skip the current image.
-            - Whether a video is currently playing.
-        """
         loop_running = self.__display.loop_running()
-        # if video is playing, we are done here
         video_playing = False
         if self.is_video_playing():
             self.pause_video(paused)
             video_playing = True
-            if self.__last_frame_tex is not None:  # first time through
+            if self.__last_frame_tex is not None:
                 self.__sfg = self.__last_frame_tex
                 self.__last_frame_tex = None
                 self.__slide.set_textures([self.__sfg, self.__sbg])
             self.__slide.draw()
-            return (loop_running, False, video_playing)  # now returns tuple with skip image flag and video_time added
+            return (loop_running, False, video_playing)
 
         tm = time.time()
         if pics is not None:
+            if self.__kenburns and self.__kb_current_state:
+                self.__kb_previous_state = self.__kb_current_state.copy()
+
             self.stop_video()
             if pics[0] and os.path.splitext(pics[0].fname)[1].lower() in VIDEO_EXTENSIONS:
                 self.__video_path = pics[0].fname
                 textures = self.__load_video_frames(self.__video_path)
-                if textures is not None:
-                    new_sfg, self.__last_frame_tex = textures
-                else:
-                    new_sfg = None
-            else:  # normal image or image pair
+                new_sfg = textures[0] if textures else None
+                self.__last_frame_tex = textures[1] if textures else None
+            else:
                 new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
 
             if new_sfg is None:
-                # image failed to load, skip it
                 return (self.__display.loop_running(), True, False)
 
             tm = time.time()
             self.__next_tm = tm + time_delay
-            self.__name_tm = tm + fade_time + self.__show_text_tm  # text starts after slide transition
+            self.__name_tm = tm + fade_time + self.__show_text_tm
             self.__sbg = self.__sfg
             self.__sfg = new_sfg
             self.__alpha = 0.0
-            if fade_time > 0.5:
-                self.__delta_alpha = 1.0 / (self.__fps * fade_time)  # delta alpha
-            else:
-                self.__delta_alpha = 1.0  # else jump alpha from 0 to 1 in one frame
-            # set the file name as the description
+            self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
+
             if self.__show_text_tm > 0.0:
                 for i, pic in enumerate(pics):
-                    self.__make_text(pic, paused, i, pics[1] is not None)  # send even if pic is None to clear previous text # noqa: E501
-            else:  # could have a NO IMAGES selected and being drawn
+                    self.__make_text(pic, paused, i, pics[1] is not None)
+            else:
                 for block in range(2):
                     self.__textblocks[block] = None
 
-            if self.__sbg is None:  # first time through
+            if self.__sbg is None:
                 self.__sbg = self.__sfg
             self.__slide.set_textures([self.__sfg, self.__sbg])
-            self.__slide.unif[45:47] = self.__slide.unif[42:44]  # transfer front width and height factors to back
-            self.__slide.unif[51:53] = self.__slide.unif[48:50]  # transfer front width and height offsets
-            wh_rat = (self.__display.width * self.__sfg.iy) / (self.__display.height * self.__sfg.ix)
-            if (wh_rat > 1.0 and self.__fit) or (wh_rat <= 1.0 and not self.__fit):
-                sz1, sz2, os1, os2 = 42, 43, 48, 49
-            else:
-                sz1, sz2, os1, os2 = 43, 42, 49, 48
-                wh_rat = 1.0 / wh_rat
-            self.__slide.unif[sz1] = wh_rat
-            self.__slide.unif[sz2] = 1.0
-            self.__slide.unif[os1] = (wh_rat - 1.0) * 0.5
-            self.__slide.unif[os2] = 0.0
+            
             if self.__kenburns:
-                self.__xstep, self.__ystep = (self.__slide.unif[i] * 2.0 / (time_delay - fade_time) for i in (48, 49))
-                self.__slide.unif[48] = 0.0
-                self.__slide.unif[49] = 0.0
+                self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
+                self.__kb_current_state['start_time'] = tm # Set start time for the new animation
+                self.__apply_kenburns_transform(self.__kb_current_state, 0.0, is_background=False)
 
-        if self.__kenburns and self.__alpha >= 1.0 and not paused:
-            t_factor = time_delay - fade_time - self.__next_tm + tm
-            # add exponentially smoothed tweening in case of timing delays etc. to avoid 'jumps'
-            self.__slide.unif[48] = self.__slide.unif[48] * 0.95 + self.__xstep * t_factor * 0.05
-            self.__slide.unif[49] = self.__slide.unif[49] * 0.95 + self.__ystep * t_factor * 0.05
-
-        if self.__alpha < 1.0:  # transition is happening
+        if self.__alpha < 1.0:
             self.__alpha += self.__delta_alpha
             if self.__alpha > 1.0:
                 self.__alpha = 1.0
-            self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha)
+            
+            if self.__kenburns and self.__kb_previous_state:
+                elapsed = tm - self.__kb_previous_state.get('start_time', tm)
+                self.__apply_kenburns_transform(self.__kb_previous_state, elapsed, is_background=True)
 
-        if (self.__next_tm - tm) < 5.0 or self.__alpha < 1.0:
-            self.__in_transition = True  # set __in_transition True a few seconds *before* end of previous slide
-        else:  # no transition effect safe to update database, resuffle etc
+            if self.__kenburns and self.__kb_current_state:
+                elapsed = tm - self.__kb_current_state.get('start_time', tm)
+                self.__apply_kenburns_transform(self.__kb_current_state, elapsed, is_background=False)
+
+        elif self.__kenburns and not paused and tm < self.__next_tm:
+            elapsed = tm - self.__kb_current_state.get('start_time', tm)
+            self.__apply_kenburns_transform(self.__kb_current_state, elapsed)
+
+        self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha)
+
+        if (self.__next_tm - tm) < fade_time or self.__alpha < 1.0:
+            self.__in_transition = True
+        else:
             self.__in_transition = False
             if self.__video_path is not None and tm > self.__name_tm:
-                # start video stream
                 if self.__video_streamer is None or not self.__video_streamer.player_alive():
                     self.__video_streamer = VideoStreamer(
-                        self.__display_x, self.__display_y,
-                        self.__display.width, self.__display.height,
-                        self.__video_path, fit_display=self.__video_fit_display
-                    )
+                        self.__display_x, self.__display_y, self.__display.width, self.__display.height,
+                        self.__video_path, fit_display=self.__video_fit_display)
                 else:
                     self.__video_streamer.play(self.__video_path)
                 self.__video_path = None
-
-        skip_image = False  # can add possible reasons to skip image below here
 
         self.__slide.draw()
         self.__draw_overlay()
@@ -720,65 +652,185 @@ class ViewerDisplay:
             self.__draw_clock()
 
         if self.__alpha >= 1.0 and tm < self.__name_tm:
-            # this sets alpha for the TextBlock from 0 to 1 then back to 0
             if self.__show_text_tm > 0:
                 dt = 1.0 - (self.__name_tm - tm) / self.__show_text_tm
             else:
                 dt = 1
-            if dt > 0.995:
-                dt = 1  # ensure that calculated alpha value fully reaches 0 (TODO: Improve!)
-            ramp_pt = max(4.0, self.__show_text_tm / 4.0)  # always > 4 so text fade will always < 4s
+            if dt > 0.995: dt = 1
+            ramp_pt = max(4.0, self.__show_text_tm / 4.0)
+            alpha = max(0.0, min(1.0, ramp_pt * (1.0 - abs(1.0 - 2.0 * dt))))
 
-            # create single saw tooth over 0 to __show_text_tm
-            alpha = max(0.0, min(1.0, ramp_pt * (1.0 - abs(1.0 - 2.0 * dt))))  # function only run if image alpha is 1.0 so can use 1.0 - abs... # noqa: E501
-
-            # if we have text, set it's current alpha value to fade in/out
             for block in self.__textblocks:
-                if block is not None:
-                    block.sprite.set_alpha(alpha)
+                if block is not None: block.sprite.set_alpha(alpha)
 
-            # if we have a text background to render (and we currently have text), set its alpha and draw it
-            if self.__text_bkg_hgt and any(block is not None for block in self.__textblocks):  # only draw background if text there # noqa: E501
+            if self.__text_bkg_hgt and any(block is not None for block in self.__textblocks):
                 self.__text_bkg.set_alpha(alpha)
                 self.__text_bkg.draw()
 
             for block in self.__textblocks:
-                if block is not None:
-                    block.sprite.draw()
-        return (loop_running, skip_image, video_playing)  # now returns tuple with skip image flag and video_time added
+                if block is not None: block.sprite.draw()
+        return (loop_running, False, video_playing)
+
+    def __calculate_kenburns_transform(self, texture, time_delay):
+        state = {'duration': time_delay}
+        if not self.__kenburns or not texture or texture.ix == 0 or texture.iy == 0:
+            return state
+
+        display_aspect = self.__display.width / self.__display.height
+        image_aspect = texture.ix / texture.iy
+        is_portrait = image_aspect < display_aspect
+
+        x_start, x_end, y_start, y_end = 0.0, 0.0, 0.0, 0.0
+
+        if is_portrait:
+            # PORTRAIT: scroll effect
+            scale = 1.0
+            if self.__kb_random_pan:
+                # Add a small zoom to prevent black bars during horizontal pan
+                scale += self.__kb_portrait_wobble_pct / 100.0
+            state['start_scale'] = scale
+            state['end_scale'] = scale
+
+            # Calculate vertical overshoot in pixels
+            scaled_height = (self.__display.width / image_aspect) * scale
+            overshoot_y = max(0, scaled_height - self.__display.height)
+            max_pan_y = overshoot_y / 2.0
+
+            # Randomize borders for start and end
+            start_border = max_pan_y * (random.uniform(0, self.__kb_portrait_border_pct) / 100.0)
+            end_border = max_pan_y * (random.uniform(0, self.__kb_portrait_border_pct) / 100.0)
+
+            scroll_dir = self.__kb_scroll_direction
+            if scroll_dir == 'random':
+                scroll_dir = random.choice(['up', 'down'])
+
+            # config 'down' = view 'top down' = image moves up = offset pos -> neg
+            # config 'up' = view 'bottom up' = image moves down = offset neg -> pos
+            if scroll_dir == 'down':
+                y_start, y_end = max_pan_y - start_border, -max_pan_y + end_border
+            else: # 'up'
+                y_start, y_end = -max_pan_y + start_border, max_pan_y - end_border
+
+            if self.__kb_random_pan:
+                # Using display width for wobble range calculation is more intuitive for portrait
+                wobble_range_x = (self.__display.width * self.__kb_portrait_wobble_pct / 100.0) / 2.0
+                x_start = random.uniform(-wobble_range_x, wobble_range_x)
+                x_end = random.uniform(-wobble_range_x, wobble_range_x)
+
+        else: # LANDSCAPE: zoom effect
+            direction = self.__kb_zoom_direction
+            if direction == "random":
+                direction = random.choice(["in", "out"])
+
+            # Randomize zoom percentage for each image
+            zoom_pct = random.uniform(0, self.__kb_zoom_pct)
+            zoom_factor = 1.0 + (zoom_pct / 100.0)
+
+            if direction == "in":
+                state['start_scale'] = 1.0
+                state['end_scale'] = zoom_factor
+            else:  # out
+                state['start_scale'] = zoom_factor
+                state['end_scale'] = 1.0
+
+            if self.__kb_random_pan:
+                # Randomize pan magnitude for this image, relative to screen size
+                pan_pct_x = random.uniform(0, self.__kb_landscape_wobble_pct)
+                pan_pct_y = random.uniform(0, self.__kb_landscape_wobble_pct)
+                desired_wobble_x = (self.__display.width * pan_pct_x / 100.0) / 2.0
+                desired_wobble_y = (self.__display.height * pan_pct_y / 100.0) / 2.0
+
+                # --- Calculate constraints for START of animation ---
+                # The pannable area (overshoot) depends on the zoom level.
+                # We must calculate it for the start and end zoom levels separately
+                # to ensure the pan stays within the image boundaries at all times.
+                start_zoom = state['start_scale']
+                start_scaled_width = (self.__display.height * image_aspect) * start_zoom
+                start_overshoot_x = max(0, start_scaled_width - self.__display.width)
+                start_max_pan_x = start_overshoot_x / 2.0
+                start_wobble_range_x = min(desired_wobble_x, start_max_pan_x)
+
+                start_scaled_height = self.__display.height * start_zoom
+                start_overshoot_y = max(0, start_scaled_height - self.__display.height)
+                start_max_pan_y = start_overshoot_y / 2.0
+                start_wobble_range_y = min(desired_wobble_y, start_max_pan_y)
+
+                x_start = random.uniform(-start_wobble_range_x, start_wobble_range_x)
+                y_start = random.uniform(-start_wobble_range_y, start_wobble_range_y)
+
+                # --- Calculate constraints for END of animation ---
+                end_zoom = state['end_scale']
+                end_scaled_width = (self.__display.height * image_aspect) * end_zoom
+                end_overshoot_x = max(0, end_scaled_width - self.__display.width)
+                end_max_pan_x = end_overshoot_x / 2.0
+                end_wobble_range_x = min(desired_wobble_x, end_max_pan_x)
+
+                end_scaled_height = self.__display.height * end_zoom
+                end_overshoot_y = max(0, end_scaled_height - self.__display.height)
+                end_max_pan_y = end_overshoot_y / 2.0
+                end_wobble_range_y = min(desired_wobble_y, end_max_pan_y)
+
+                x_end = random.uniform(-end_wobble_range_x, end_wobble_range_x)
+                y_end = random.uniform(-end_wobble_range_y, end_wobble_range_y)
+
+        state['start_offset_x'], state['end_offset_x'] = x_start, x_end
+        state['start_offset_y'], state['end_offset_y'] = y_start, y_end
+
+        self.__logger.debug("KB Setup: is_portrait=%s, scale=%.2f->%.2f, pan_x=%.2f->%.2f, pan_y=%.2f->%.2f",
+            is_portrait, state.get('start_scale', 0), state.get('end_scale', 0), x_start, x_end, y_start, y_end)
+        return state
+
+    def __apply_kenburns_transform(self, state, elapsed_time, is_background=False):
+        if not state or state.get('duration', 0) <= 0:
+            return
+
+        t = min(1.0, max(0.0, elapsed_time / state['duration']))
+        t = t * t * (3.0 - 2.0 * t) # ease-in-out
+
+        kb_scale = state['start_scale'] + t * (state['end_scale'] - state['start_scale'])
+        offset_x = state['start_offset_x'] + t * (state['end_offset_x'] - state['start_offset_x'])
+        offset_y = state['start_offset_y'] + t * (state['end_offset_y'] - state['start_offset_y'])
+
+        texture = self.__sfg if not is_background else self.__sbg
+        if not texture:
+            return
+
+        display_aspect = self.__display.width / self.__display.height
+        image_aspect = texture.ix / texture.iy if texture.iy > 0 else 1.0
+
+        # Base scaling to fit image without distortion
+        if display_aspect > image_aspect: # Portrait on landscape
+            scale_x = kb_scale
+            scale_y = kb_scale * (display_aspect / image_aspect)
+        else: # Landscape on portrait
+            scale_x = kb_scale * (image_aspect / display_aspect)
+            scale_y = kb_scale
+
+        # Convert pixel offsets to shader's texture coordinate space
+        offset_x_unif = (offset_x / self.__display.width) / scale_x if scale_x != 0 else 0
+        offset_y_unif = (offset_y / self.__display.height) / scale_y if scale_y != 0 else 0
+
+        if is_background:
+            self.__slide.unif[45] = scale_x
+            self.__slide.unif[46] = scale_y
+            self.__slide.unif[50] = offset_x_unif
+            self.__slide.unif[51] = offset_y_unif
+        else:
+            self.__slide.unif[42] = scale_x
+            self.__slide.unif[43] = scale_y
+            self.__slide.unif[48] = offset_x_unif
+            self.__slide.unif[49] = offset_y_unif
     
     def stop_video(self):
-        """
-        Stops the video playback if a video is currently playing.
-
-        This method stops the video stream and ensures that the video playback
-        is halted. It does nothing if no video streamer is active.
-        """
         if self.__video_streamer is not None:
             self.__video_streamer.stop()
 
     def is_video_playing(self) -> bool:
-        """
-        Checks if a video is currently playing.
-
-        Returns:
-        --------
-        bool
-            True if a video is playing, False otherwise.
-        """
         if self.__video_streamer is not None and self.__video_streamer.is_playing():
             return True
         return False
 
     def pause_video(self, do_pause: bool):
-        """
-        Pauses or resumes the video playback.
-
-        Parameters:
-        -----------
-        do_pause : bool
-            If True, pauses the video. If False, resumes the video playback.
-        """
         if self.__video_streamer is not None:
             self.__video_streamer.pause(do_pause)
 

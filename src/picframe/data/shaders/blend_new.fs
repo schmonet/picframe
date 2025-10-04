@@ -1,5 +1,4 @@
 // ----- boiler-plate code for fragment shader variable definition
-#version 120
 
 uniform sampler2D tex0;
 uniform sampler2D tex1;

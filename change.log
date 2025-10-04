@@ -1,21 +1,3 @@
-19-09-2025
-- Fixed a bug in `pir_manager.py` where the inactivity timer was unreliable due to using `time.time()` instead of `time.monotonic()`. This ensures the display turns off correctly after a period of inactivity, even if the system time changes (e.g., due to NTP syncs).
-- Removed email address from README.md.
-- Added file headers with author and AI contribution information to all scripts in `picframe_scripts`.
-- Updated `changes.txt` to include `README.md` and reflect the latest changes.
-
-13-09-2025
-- Fixed Ken Burns effect continuing to run during pause mode in `viewer_display.py`.
-- Major refactoring of `pir_manager.py` to remove MQTT dependency.
-- Slideshow pausing (`HOLD` state) is now controlled via direct HTTP calls to the picframe web server.
-- The `BLACK` state now directly turns off the display using `cec-client`.
-
-11-09-2025
-- Fixed a `TypeError` in `interface_mqtt.py` by replacing `|` with `Union` for type hints to support older Python versions.
-
-10-09-2025
-- Replaced the WLAN check in `sync_photos.sh` with a more reliable ping to `8.8.8.8`.
-- Removed the redundant WLAN check and now only check for the server's reachability.
-- Replaced `kmsblank` with `cec-client` in `pir_manager.py` for display power control.
-- Added `cec-utils` to `install.sh`.
-- Extended `test_pir.py` to a full state-sequence test script.
+2025-10-04:
+- Fixed AttributeError in viewer_display.py by correctly initializing and using landscape/portrait specific Ken Burns wobble parameters.
+- Fixed SyntaxError in viewer_display.py caused by a typo.

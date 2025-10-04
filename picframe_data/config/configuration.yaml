@@ -21,6 +21,13 @@ viewer:
   video_fit_display: false                # default=false, true => scale video to match display size (video may have distortion)
                                           #                false => scale video without distortion (video may have black bars)
   kenburns: true                          # default=false, will set fit->false and blur_edges->false
+  kenburns_zoom_direction: "random"       # default="random", choices={"in", "out", "random"}, direction of the zoom.
+  kenburns_zoom_pct: 30.0                 # default=10.0, percentage to zoom in. 10.0 means the image will be 110% of its initial size at the end.
+  kenburns_landscape_wobble_pct: 20.0     # default=5.0, how much to "wobble" sideways on landscape images, as a percentage of the pannable area.
+  kenburns_portrait_wobble_pct: 5.0       # default=5.0, how much to "wobble" sideways on portrait images, as a percentage of the pannable area.
+  kenburns_random_pan: True               # default=True, set to False to disable all random panning and revert to simple centered zoom.
+  kenburns_portrait_border_pct: 25.0      # default=20.0, for portrait images, the percentage of the top and bottom to exclude from the panning area.
+  kenburns_scroll_direction: "random"     # default="random", choices={"up", "down", "random"}, direction of the zoom.  
   crop_to_aspect_ratio: null              # default=null, force cropping of images to a certain aspect ratio, i.e. "4:3"
   display_x: 0                            # offset from left of screen (can be negative)
   display_y: 0                            # offset from top of screen (can be negative)
@@ -65,15 +72,15 @@ model:
   subdirectory: ""
   recent_n: 7                             # default=7 (days), when shuffling file change date more recent than this number of days play before the rest
   reshuffle_num: 1                        # default=1, times through before reshuffling
-  time_delay: 60.0                        # default=200.0, time between consecutive slide starts - can be changed by MQTT
-  fade_time: 10.0                         # default=10.0, change time during which slides overlap - can be changed by MQTT
+  time_delay: 30.0                        # default=200.0, time between consecutive slide starts - can be changed by MQTT
+  fade_time: 5.0                          # default=10.0, change time during which slides overlap - can be changed by MQTT
   update_interval: 10.0                   # default=2.0, time in seconds to wait between two consecutive scans for new files
   shuffle: false                          # default=true, shuffle on reloading image files - can be changed by MQTT, depends on group_by_dir.
   shuffle_Album_Subfolder: true           # default=true, when folders are <location> don't play those folders in alphabetical order
   shuffle_Folder_Root: true               # default=true, when folders in root are years <YYYY> don't play those folders in timely order
   loop: false
   group_by_dir: true                      # default=true, display images from each folder in a row, do not jump to image from a different folder before every image in current folder was shown, with shuffle is true shuffle by groups within each folder
-  delete_after_show: true                 # bleibt erhalten und verhindert weiter efektiv die mehrfache Anzeige von den selben Fotos.
+  delete_after_show: false                # bleibt erhalten und verhindert weiter efektiv die mehrfache Anzeige von den selben Fotos.
   sort_cols: 'fname ASC'                  # default='fname ASC' can be any columns in the table with optional ASC or DESC separated by commas
                                           # fname, last_modified, file_id, orientation, exif_datetime, f_number,
                                           # exposure_time, iso, focal_length, make, model, lens, rating,
@@ -106,8 +113,8 @@ model:
   portrait_pairs: false
   location_filter: ""                     # default="" filter clause for image location
   tags_filter: ""                         # default="" filter clause for image tags
-  log_level: "WARNING"                    # default=WARNING, could beDEBUG, INFO, WARNING, ERROR, CRITICAL
-  log_file: ""                            # default="" for debugging set this to the path to a file. NB logging messages will
+  log_level: "DEBUG"                      # default=WARNING, could beDEBUG, INFO, WARNING, ERROR, CRITICAL
+  log_file: "picframe.log"                # default="" for debugging set this to the path to a file. NB logging messages will
                                           # appended indefinitely so don't forget this. You will need to tidy it up later
 
 mqtt:

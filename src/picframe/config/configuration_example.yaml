@@ -21,6 +21,14 @@ viewer:
   video_fit_display: False                # default=False, True => scale video to match display size (video may have distortion)
                                           #                False => scale video without distortion (video may have black bars)
   kenburns: False                         # default=False, will set fit->False and blur_edges->False
+  kenburns_zoom_direction: "random"         # default="random", choices={"in", "out", "random"}. Direction of the zoom for landscape images.
+  kenburns_scroll_direction: "random"     # default="random", choices={"up", "down", "random"}. Direction of the scroll for portrait images.
+  kenburns_zoom_pct: 10.0                 # default=10.0, max percentage to zoom in/out for landscape images. 10.0 means the image will be up to 110% of its initial size.
+  kenburns_random_pan: True               # default=True, set to False to disable all random panning and revert to simple centered zoom/scroll.
+  #kenburns_wobble_pct: 5.0                # DEPRECATED. Use the new landscape and portrait specific settings below.
+  kenburns_landscape_wobble_pct: 5.0      # default=5.0, how much to "wobble" sideways on landscape images, as a percentage of the screen dimension.
+  kenburns_portrait_wobble_pct: 5.0       # default=5.0, how much to "wobble" sideways on portrait images, as a percentage of the screen dimension. This also defines the zoom-in for portrait images.
+  kenburns_portrait_border_pct: 20.0      # default=20.0, for portrait images, the percentage of the top and bottom to exclude from the vertical scrolling area.
   crop_to_aspect_ratio: null              # default=null, force cropping of images to a certain aspect ratio, i.e. "4:3"
   display_x: 0                            # offset from left of screen (can be negative)
   display_y: 0                            # offset from top of screen (can be negative)
