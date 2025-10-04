@@ -1,3 +1,19 @@
+2025-09-30:
+- Corrected aspect ratio calculation in `viewer_display.py` to prevent horizontal stretching of portrait images.
+- Replaced incorrect aspect ratio logic in `viewer_display.py`.
+
+2025-10-01:
+- Corrected the calculation of start and end points for vertical panning in `viewer_display.py`.
+- Corrected the conversion of pixel offset to shader uniform offset in `viewer_display.py`.
+
+2025-10-02:
+- Refactored `__calculate_kenburns_transform` in `viewer_display.py` to add a slight zoom for portrait images and randomize zoom and pan for landscape images.
+
+2025-10-03:
+- Modified `viewer_display.py` to calculate pan/wobble range based on display dimensions.
+- Corrected the pannable area calculation in `viewer_display.py` to prevent black borders.
+- Split `kenburns_wobble_pct` into `kenburns_landscape_wobble_pct` and `kenburns_portrait_wobble_pct`.
+- Corrected a `SyntaxError` in `viewer_display.py`.
+
 2025-10-04:
-- Fixed AttributeError in viewer_display.py by correctly initializing and using landscape/portrait specific Ken Burns wobble parameters.
-- Fixed SyntaxError in viewer_display.py caused by a typo.
+- Corrected `AttributeError` in `viewer_display.py` by initializing and using new wobble parameters.
