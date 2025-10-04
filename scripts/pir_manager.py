@@ -48,7 +48,7 @@ NIGHT_START_HOUR = 0  # 00:00
 NIGHT_END_HOUR = 7    # 07:00
 LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
 PICFRAME_SERVICE = "picframe.service"
-CONFIG_PATH = "/home/schmali/picframe_data/config/configuration.yaml"
+CONFIG_PATH = "~/picframe/configuration.yaml"
 
 # --- States ---
 STATE_ON = "ON"

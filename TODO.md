@@ -48,7 +48,7 @@
         - Wenn `kenburns_scroll_direction: random` für jedes Bild zufällig, `scroll: top down` oder `scroll: bottom up`, vertikales Scrolling startet und endet mit zufälligem Offset ≤ `kenburns_portrait_border_pct`
         - Wenn `kenburns_scroll_direction: up, down` für jedes Bild gleich, entsprechend `scroll: down = top down` oder `scroll: up = bottom up`, vertikales Scrolling startet und endet mit zufälligem Offset ≤ `kenburns_portrait_border_pct`
 
-## picframe_scripts/pir_manager.py
+## scripts/
 - Steuert Slideshow und Display basierend auf Bewegungserkennung und Zeitplan.
 - **Korrekturen & Änderungen:**
   - `HOLD`-Zustand über HTTP-Aufruf an den picframe-Webserver (ohne MQTT-Broker).  

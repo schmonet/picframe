@@ -27,9 +27,9 @@ log_msg() {
 }
 
 USER_HOME="$HOME"
-CONFIG_FILE="$USER_HOME/picframe/picframe_scripts/sync_config.yaml"
-SHOWN_ALBUMS_LOG="$USER_HOME/shown_albums.log"
-PICFRAME_CACHE_PATH="$USER_HOME/picframe_cache"
+CONFIG_FILE="$USER_HOME/picframe/scripts/sync_config.yaml"
+SHOWN_ALBUMS_LOG="$USER_HOME/picframe/shown_albums.log"
+PICFRAME_CACHE_PATH="$USER_HOME/picframe/cache"
 # Function to read a value from the YAML config file
 get_config() {
     awk -F': *' '/^'$1':/{print $2}' "$CONFIG_FILE" | tr -d '"'

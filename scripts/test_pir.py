@@ -30,7 +30,7 @@ except Exception:
 # --- Configuration ---
 PIR_PIN = 4
 PICFRAME_SERVICE = "picframe.service"
-CONFIG_PATH = "/home/schmali/picframe_data/config/configuration.yaml"
+CONFIG_PATH = "~/picframe/configuration.yaml"
 
 def run_command(cmd):
     """Executes a shell command."""

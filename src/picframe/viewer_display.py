@@ -737,41 +737,24 @@ class ViewerDisplay:
                 # Randomize pan magnitude for this image, relative to screen size
                 pan_pct_x = random.uniform(0, self.__kb_landscape_wobble_pct)
                 pan_pct_y = random.uniform(0, self.__kb_landscape_wobble_pct)
+
+                # Calculate minimum scale to allow for the desired wobble, ensuring consistency
+                min_scale_x = (display_aspect / image_aspect) * (1 + pan_pct_x / 100.0) if image_aspect > 0 else 1.0
+                min_scale_y = 1 + pan_pct_y / 100.0
+                min_scale_for_wobble = max(min_scale_x, min_scale_y)
+
+                # Apply the minimum scale to the zoom animation
+                state['start_scale'] = max(state['start_scale'], min_scale_for_wobble)
+                state['end_scale'] = max(state['end_scale'], min_scale_for_wobble)
+
+                # With the scale adjusted, the desired wobble is now always possible.
                 desired_wobble_x = (self.__display.width * pan_pct_x / 100.0) / 2.0
                 desired_wobble_y = (self.__display.height * pan_pct_y / 100.0) / 2.0
 
-                # --- Calculate constraints for START of animation ---
-                # The pannable area (overshoot) depends on the zoom level.
-                # We must calculate it for the start and end zoom levels separately
-                # to ensure the pan stays within the image boundaries at all times.
-                start_zoom = state['start_scale']
-                start_scaled_width = (self.__display.height * image_aspect) * start_zoom
-                start_overshoot_x = max(0, start_scaled_width - self.__display.width)
-                start_max_pan_x = start_overshoot_x / 2.0
-                start_wobble_range_x = min(desired_wobble_x, start_max_pan_x)
-
-                start_scaled_height = self.__display.height * start_zoom
-                start_overshoot_y = max(0, start_scaled_height - self.__display.height)
-                start_max_pan_y = start_overshoot_y / 2.0
-                start_wobble_range_y = min(desired_wobble_y, start_max_pan_y)
-
-                x_start = random.uniform(-start_wobble_range_x, start_wobble_range_x)
-                y_start = random.uniform(-start_wobble_range_y, start_wobble_range_y)
-
-                # --- Calculate constraints for END of animation ---
-                end_zoom = state['end_scale']
-                end_scaled_width = (self.__display.height * image_aspect) * end_zoom
-                end_overshoot_x = max(0, end_scaled_width - self.__display.width)
-                end_max_pan_x = end_overshoot_x / 2.0
-                end_wobble_range_x = min(desired_wobble_x, end_max_pan_x)
-
-                end_scaled_height = self.__display.height * end_zoom
-                end_overshoot_y = max(0, end_scaled_height - self.__display.height)
-                end_max_pan_y = end_overshoot_y / 2.0
-                end_wobble_range_y = min(desired_wobble_y, end_max_pan_y)
-
-                x_end = random.uniform(-end_wobble_range_x, end_wobble_range_x)
-                y_end = random.uniform(-end_wobble_range_y, end_wobble_range_y)
+                x_start = random.uniform(-desired_wobble_x, desired_wobble_x)
+                y_start = random.uniform(-desired_wobble_y, desired_wobble_y)
+                x_end = random.uniform(-desired_wobble_x, desired_wobble_x)
+                y_end = random.uniform(-desired_wobble_y, desired_wobble_y)
 
         state['start_offset_x'], state['end_offset_x'] = x_start, x_end
         state['start_offset_y'], state['end_offset_y'] = y_start, y_end
