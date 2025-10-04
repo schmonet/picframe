@@ -44,3 +44,23 @@
 * State: The user reported an `AttributeError` in `src/picframe/viewer_display.py`.
 * Problem: The attributes `__kb_landscape_wobble_pct` and `__kb_portrait_wobble_pct` were used but not initialized in the `__init__` method. The old `__kb_wobble_pct` was still being used for portrait images.
 * Solution: I have corrected the `__init__` method to initialize the new landscape and portrait wobble attributes. I also updated the `__calculate_kenburns_transform` method to use `__kb_portrait_wobble_pct` for portrait images.
+
+2025-10-04 14:00:00:
+* State: The user observed that the Ken Burns effect for landscape images has inconsistent strength.
+* Problem: The panning strength was dependent on the image's aspect ratio, making the effect weaker for images with aspect ratios close to the display's.
+* Solution: I have modified `viewer_display.py` to enforce a minimum zoom level to guarantee enough overshoot for the desired panning, making the effect consistent.
+
+2025-10-04 14:20:00:
+* State: The user reported that the `pir_manager.py` service was failing after they moved the scripts directory.
+* Problem: The path to the script was hardcoded in `install.sh`.
+* Solution: I have corrected the `SCRIPT_DIR` variable in `install.sh` to point to the new location.
+
+2025-10-04 14:25:00:
+* State: The user reported a `FileNotFoundError` for `configuration.yaml` after moving files.
+* Problem: The default path to the configuration file was hardcoded in `model.py`.
+* Solution: I explained to the user how to pass the correct config file path as an argument in `watcher.sh`.
+
+2025-10-04 14:30:00:
+* State: The user reported errors in `sync_photos.sh` due to Windows line endings.
+* Problem: The script had `CRLF` line endings, which are not compatible with Linux shells.
+* Solution: I explained the cause of the issue and provided the user with the `dos2unix` command to fix the file on their system.

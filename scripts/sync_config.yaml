@@ -6,7 +6,7 @@ server_ip: "192.168.178.26"
 # Name of the shared folder on the server
 share_name: "Fotos"
 # Path to a credentials file for the SMB share.
-credentials_file: "/home/user/.smb_credentials"
+credentials_file: "~/.smb_credentials"
 # Optional: If your server requires a domain, specify it here (e.g., WORKGROUP)
 domain: ""
 # The version of the SMB protocol to use. 3.0 is a good default.
@@ -16,9 +16,9 @@ smb_version: "3.0"
 # CACHE AND SYNC LOGIC
 # ---------------------
 # The main cache where albums are stored after download and that picframe reads from.
-picframe_cache_path: "/home/user/picframe_cache"
+picframe_cache_path: "~/picframe/cache"
 # The log file to track shown albums and prevent immediate repeats.
-shown_albums_log: "/home/user/picframe/picframe_scripts/shown_albums.log"
+shown_albums_log: "~/picframe/shown_albums.log"
 # Maximum size of the cache in Gigabytes.
 max_cache_size_gb: 5
 # Maximum number of pictures to download per album.
@@ -36,4 +36,4 @@ filter_root_folders: "/[0-9][0-9][0-9][0-9]/"
 # PICFRAME CONFIG
 # -----------------
 # Path to picframe's main configuration file.
-picframe_config_path: "/home/user/picframe/picframe_data/config/configuration.yaml"
+picframe_config_path: "~/picframe/configuration.yaml"

@@ -18,12 +18,12 @@
 set -e
 
 # --- CONFIGURATION ---
-USER_HOME="/home/schmali"
+USER_HOME="~/"
 PROJECT_DIR="$USER_HOME/picframe"
-SCRIPT_DIR="$PROJECT_DIR/picframe_scripts"
-DATA_DIR="$USER_HOME/picframe_data"
-CACHE_DIR="$USER_HOME/picframe_cache"
-LIVE_DIR="$USER_HOME/picframe_live"
+SCRIPT_DIR="$PROJECT_DIR/scripts"
+DATA_DIR="$USER_HOME/picframe/data"
+CACHE_DIR="$USER_HOME/picframe/cache"
+LIVE_DIR="$USER_HOME/picframe/live"
 VENV_DIR="$PROJECT_DIR/venv"
 
 # --- SCRIPT LOGIC ---

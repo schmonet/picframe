@@ -17,3 +17,7 @@
 
 2025-10-04:
 - Corrected `AttributeError` in `viewer_display.py` by initializing and using new wobble parameters.
+- Fixed inconsistent Ken Burns effect for landscape images by enforcing a minimum zoom in `viewer_display.py`.
+- Corrected script path in `install.sh` to reflect new directory structure.
+- Provided guidance on fixing `FileNotFoundError` for config file by updating `watcher.sh`.
+- Provided guidance on fixing shell script errors by converting line endings with `dos2unix`.
