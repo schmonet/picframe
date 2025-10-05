@@ -84,3 +84,8 @@
 * State: The user reported an error with the `check_pic_dates.sh` script.
 * Problem: The `touch` command fails with an invalid date format error because a hyphen is used between the month and day.
 * Solution: I have corrected the `check_pic_dates.sh` script to use the `+%m%d` format for the date, which is compatible with the `touch -t` command.
+
+2025-10-05 14:30:00:
+* State: The user requested a new 'A' (All) option in the `check_pic_dates.sh` script.
+* Problem: The user wants to process all directories without being prompted for each one.
+* Solution: I have added an 'A' option to the script. When selected, it sets a flag to process all subsequent directories without further confirmation.
