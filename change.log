@@ -24,3 +24,4 @@
 
 2025-10-05:
 - Created a new shell script `check_pic_dates.sh` to check and correct image dates based on directory names and EXIF data.
+- Added `libimage-exiftool-perl` to `install.sh` to provide `exiftool`.
