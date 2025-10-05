@@ -74,3 +74,8 @@
 * State: The user reported that the `check_pic_dates.sh` script is missing the `exiftool` dependency.
 * Problem: The `exiftool` command is not found when running the script.
 * Solution: I have updated the `install.sh` script to include the installation of `libimage-exiftool-perl`, which provides the `exiftool` command.
+
+2025-10-05 10:20:00:
+* State: The user reported that the `clock_hgt_offset_pct` setting for the clock is not working as expected.
+* Problem: A small percentage value for `clock_hgt_offset_pct` results in a much larger visual offset.
+* Solution: I have corrected the formula for the clock's vertical position in `viewer_display.py` to accurately reflect the percentage-based offset.
