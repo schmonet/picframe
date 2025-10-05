@@ -468,11 +468,7 @@ class ViewerDisplay:
                 x *= -1
             elif self.__clock_justify == "C":
                 x = 0
-            y = (self.__display.height
-                 - self.__clock_overlay.sprite.height
-                 - self.__clock_text_sz * 0.5
-                 - hgt_offset
-                 ) // 2
+            y = (self.__display.height - self.__clock_overlay.sprite.height) // 2 - hgt_offset
             if self.__clock_top_bottom == "B":
                 y *= -1
             self.__clock_overlay.sprite.position(x, y, 0.1)
