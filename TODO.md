@@ -104,3 +104,15 @@
 - Läuft in eigenem Thread, scannt Dateisystem periodisch.  
 - Bietet Abfrage- und Löschmethoden für `model.py`-Funktionen (`group_by_dir`, `delete_after_show`).  
 - **Korrektur:** Fehler beim Löschen von Datenbankeinträgen in der Klasse behoben.
+
+## scripts/check_pic_dates.sh
+- **Neu:** Shell-Skript zur Überprüfung und Korrektur von Bilddatumsangaben.
+- **Funktionen:**
+  - Iteriert durch Verzeichnisse mit Jahresnamen (z.B. `2023`).
+  - Vergleicht das Verzeichnisjahr mit dem Erstellungs-, Änderungs- und EXIF-Datum von Bildern.
+  - **EXIF-Daten vorhanden:**
+    - Passt das Dateidatum an das EXIF-Datum an.
+    - Fragt den Benutzer, ob die Datei in ein zum EXIF-Jahr passendes Verzeichnis verschoben werden soll.
+  - **Keine EXIF-Daten vorhanden:**
+    - Passt das Jahr des Dateidatums an das Verzeichnisjahr an.
+  - Protokolliert alle Aktionen in einer Log-Datei (`check_pic_dates.log`).
