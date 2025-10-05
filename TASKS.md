@@ -69,3 +69,8 @@
 * State: The user requested a new shell script to check and correct image dates.
 * Problem: The user needs a script to verify and fix image dates based on directory names and EXIF data.
 * Solution: I have created a new shell script `check_pic_dates.sh` in the `scripts` directory. The script iterates through year-named directories, compares file dates with directory and EXIF years, and provides options to fix dates and move files accordingly. All actions are logged.
+
+2025-10-05 10:10:00:
+* State: The user reported that the `check_pic_dates.sh` script is missing the `exiftool` dependency.
+* Problem: The `exiftool` command is not found when running the script.
+* Solution: I have updated the `install.sh` script to include the installation of `libimage-exiftool-perl`, which provides the `exiftool` command.
