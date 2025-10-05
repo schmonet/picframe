@@ -86,7 +86,7 @@ for YEAR_DIR in */;
                         # 6.a
                         if [ "$YEAR_FROM_DIR" != "$YEAR_FROM_CREATE" ] || [ "$YEAR_FROM_DIR" != "$YEAR_FROM_MODIFY" ]; then
                             log_msg "Updating year for $FILE to $YEAR_FROM_DIR"
-                            MONTH_DAY_CREATE=$(date -d "$CREATE_DATE" +%m-%d)
+                            MONTH_DAY_CREATE=$(date -d "$CREATE_DATE" +%m%d)
                             touch -t "${YEAR_FROM_DIR}${MONTH_DAY_CREATE}0000" "$FILE"
                         fi
                     fi

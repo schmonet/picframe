@@ -26,3 +26,4 @@
 - Created a new shell script `check_pic_dates.sh` to check and correct image dates based on directory names and EXIF data.
 - Added `libimage-exiftool-perl` to `install.sh` to provide `exiftool`.
 - Corrected the clock's vertical position calculation in `viewer_display.py`.
+- Fixed a bug in `check_pic_dates.sh` that caused an invalid date format for the `touch` command.
