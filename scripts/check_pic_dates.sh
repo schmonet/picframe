@@ -60,10 +60,7 @@ for YEAR_DIR in */;
                 ;&
             [Yy]* )
                 # Find all image files in the year directory
-                find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d 
-    fi
-done
-' FILE;
+                find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d $'\0' FILE;
                  do
                     # Get the file creation and modification dates
                     CREATE_DATE=$(stat -c %y "$FILE")
