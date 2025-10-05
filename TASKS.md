@@ -94,3 +94,8 @@
 * State: The user reported a syntax error in the `check_pic_dates.sh` script.
 * Problem: The script has a syntax error `;&&` in a case statement.
 * Solution: I have corrected the syntax error by changing `;&&` to `;&`.
+
+2025-10-05 14:50:00:
+* State: The user reported another syntax error in the `check_pic_dates.sh` script.
+* Problem: The script has a syntax error due to a misplaced `fi` and `done` inside a `while` loop declaration, likely caused by a previous faulty modification.
+* Solution: I have rewritten the script to fix the corrupted loop and restore the correct structure.
