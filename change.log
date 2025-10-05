@@ -21,3 +21,6 @@
 - Corrected script path in `install.sh` to reflect new directory structure.
 - Provided guidance on fixing `FileNotFoundError` for config file by updating `watcher.sh`.
 - Provided guidance on fixing shell script errors by converting line endings with `dos2unix`.
+
+2025-10-05:
+- Created a new shell script `check_pic_dates.sh` to check and correct image dates based on directory names and EXIF data.

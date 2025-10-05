@@ -1,0 +1,1000 @@
+518  crontab -e
+  519  crontab -l
+  520  /home/schmali/picframe/sync_photos.sh
+  521  ls
+  522  rm ./picframe_backup_20250727.tar.gz 
+  523  ls -l
+  524  sudo reboot now
+  525  cd /home/schmali/picframe-v2025.06.18
+  526  source picframe-venv/bin/activate
+  527  pip install .
+  528  cd /home/schmali/picframe-v2025.06.18
+  529  source picframe-venv/bin/activate
+  530  pip install .
+  531  exit
+  532  ls -l
+  533  ./install_picframe2.sh 
+  534  cd /home/schmali/picframe2/src
+  535  PYTHONPATH=. ../picframe-venv/bin/python3 -m picframe.start --config config/configuration_example.yaml
+  536  cd /home/schmali/picframe2/src
+  537  PYTHONPATH=. ../picframe-venv/bin/python3 -m picframe.start config/configuration_example.yaml
+  538  cd /home/schmali/picframe2
+  539  PYTHONPATH=src ./picframe-venv/bin/python3 -m picframe.start src/picframe/config/configuration_example.yaml
+  540  cd /home/schmali/picframe2/src
+  541  PYTHONPATH=. ../picframe-venv/bin/python3 -m picframe.start picframe/config/configuration_custom.yaml
+  542  crontab -e
+  543  cd /home/schmali/picframe2/src
+  544  ls
+  545  cd ..
+  546  ls
+  547  ls -l
+  548  ./run_sync_if_online.sh 
+  549  ./sync_photos.sh 
+  550  crontab -e
+  551  cd /home/schmali/picframe2/src
+  552  PYTHONPATH=. ../picframe-venv/bin/python3 -m picframe.start picframe/config/configuration_custom.yaml
+  553  cd ..
+  554  find "photo_history.db"
+  555  find * "photo_hi
+  556  find * | grep "photo_history.db"
+  557  crontab -e
+  558  sudo reboot now
+  559  cd /home/schmali/picframe2/src
+  560  sudo systemctl disable getty@tty1.service
+  561  sudo systemctl enable getty@tty1.service
+  562  ls
+  563  rm picframe
+  564  rm picframe -s
+  565  rm picframe -r
+  566  ls
+  567  rm picframe2 -r
+  568  rm picframe_data -r
+  569  ls
+  570  ls -l
+  571  ls
+  572  bash /home/Schmali/picframe/picframe_scripts/install.sh
+  573  ls
+  574  cd picframe/
+  575  ls 
+  576  cd picframe_scripts/
+  577  ls
+  578  where install.sh 
+  579  p
+  580  pw
+  581  cd /home/
+  582  cd schmali/
+  583  bash /home/schmali/picframe/picframe_scripts/install.sh
+  584  git clone https://github.com/helgeerbe/picframe.git
+  585  ls
+  586  git
+  587  ls 
+  588  cd picframe
+  589  ls
+  590  git fetch origin
+  591  ls
+  592  cd ..
+  593  ls
+  594  mv picframe picframe.bak
+  595  ls
+  596  git clone https://github.com/helgeerbe/picframe.git
+  597  cp /home/schmali/picframe/src/picframe/config/configuration_example.yaml /home/schmali/picframe/config/configuration.yaml
+  598  cp /home/schmali/picframe/src/picframe/config/configuration_example.yaml /home/schmali/picframe_data/config/configuration.yaml
+  599  bash /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  600  nano ~/.smb_credentials
+  601  bash /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  602  bash ~/picframe/picframe_scripts/sync_photos.sh
+  603  nano ~/.smb_credentials
+  604  sudo apt-get update
+  605  sudo apt-get install bc
+  606  bash ~/picframe/picframe_scripts/sync_photos.sh
+  607  ~/picframe/picframe_scripts/sync_photos.sh
+  608  cat ~/.smb_credentials
+  609  bash ~/picframe/picframe_scripts/sync_photos.sh
+  610  dmesg
+  611  ping \\SMEDIABASE
+  612  bash ~/picframe/picframe_scripts/sync_photos.sh
+  613  cat ~/.smb_credentials
+  614  bash ~/picframe/picframe_scripts/sync_photos.sh
+  615  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="~/.smb_credentials",iocharset=utf8,vers=3.0
+  616  ls
+  617  ls -l
+  618  cat ~/.smb_credentials 
+  619  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=3.0
+  620  dmesg
+  621  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=3.0
+  622  bash ~/picframe/picframe_scripts/sync_photos.sh
+  623  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" 
+  624  mount --help
+  625  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share"
+  626  ls
+  627  chmod 0600  ~/.smb_credentials 
+  628  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=3.0
+  629  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share"
+  630  bash ~/picframe/picframe_scripts/sync_photos.sh
+  631  sudo apt install cifs-utils
+  632  bash ~/picframe/picframe_scripts/sync_photos.sh
+  633  tail -f /var/log/kern.log
+  634  bash ~/picframe/picframe_scripts/sync_photos.sh
+  635  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=1.0
+  636  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=3.0
+  637  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=2.0
+  638  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=1.0
+  639  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=2.0
+  640  dmesg
+  641  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=2.0
+  642  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8,vers=3.0
+  643  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials",iocharset=utf8
+  644  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o credentials="/home/schmali/.smb_credentials"
+  645  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share"
+  646  sudo mount -t cifs "//192.168.178.26/Fotos" "/mnt/server_share" -o username="media"
+  647  ls /mnt/server_share/
+  648  bash ~/picframe/picframe_scripts/sync_photos.sh
+  649  bash ~/picframe/picframe_scripts/watcher.sh
+  650  ls ~/picframe_live
+  651  ~/picframe/picframe_scripts/watcher.sh
+  652  bash ~/picframe/picframe_scripts/watcher.sh
+  653  bash ~/picframe/picframe_scripts/watcher.sh &
+  654  bash ~/picframe/picframe_scripts/album_manager.sh
+  655  ls -R ~/picframe_cache
+  656  ls /mnt/server_share/
+  657  bash ~/picframe/picframe_scripts/sync_photos.sh
+  658  bash ~/picframe/picframe_scripts/sync_photos.sh &
+  659  rm "/home/schmali/picframe_cache/2018/München Ägyptothek/" -r
+  660  bash ~/picframe/picframe_scripts/sync_photos.sh
+  661  bash ~/picframe/picframe_scripts/sync_photos.sh &
+  662  btop
+  663  top
+  664  kill
+  665  kill -n 8288
+  666  kill -s 8288
+  667  kill 8288
+  668  btop
+  669  apt get btop
+  670  apt install btop
+  671  apt-get install btop
+  672  sudo apt-get install btop
+  673  top
+  674  screen -S sync_photos
+  675  bash ~/picframe/picframe_scripts/album_manager.sh
+  676  bash ~/picframe/picframe_scripts/watcher.sh &
+  677  source ~/picframe/venv/bin/activate
+  678  python ~/picframe/src/picframe/start.py
+  679  pip install -e ~/picframe
+  680  picframe
+  681  sudo locale-gen en_US.UTF-8
+  682  mkdir -p ~/picframe_data/data
+  683  picframe
+  684  sudo raspi-config nonint do_change_locale de_DE.UTF-8
+  685  picframe
+  686  sudo apt-get update
+  687  sudo apt-get install -y libsdl2-dev xwayland labwc wlr-randr
+  688  cp -r ~/picframe/src/picframe/data/* ~/picframe_data/data/
+  689  picframe
+  690  sudo reboot now
+  691  ls
+  692  source ~/picframe/venv/bin/activate
+  693  picframe
+  694  bash ~/picframe/picframe_scripts/sync_photos.sh
+  695  ls
+  696  cd picframe_scripts/
+  697  ls
+  698  cd ..
+  699  ls
+  700  bash ~/picframe/picframe_scripts/sync_photos.sh
+  701  sudo umount /mnt/server_share
+  702  bash ~/picframe/picframe_scripts/sync_photos.sh
+  703  exit
+  704  screen -S sync
+  705  screen -ls
+  706  screen -k 
+  707  screen -r sync 
+  708  screen -r 918.sync 
+  709  screen -r 4703.sync 
+  710  screen -r 918.sync 
+  711  /usr/sbin/ifconfig wlan0 down
+  712  sudo /usr/sbin/ifconfig wlan0 down
+  713  ls
+  714  cd picframe
+  715  ls
+  716  cd picframe_scripts/
+  717  ls
+  718  ./sync_photos.sh &
+  719  ./album_manager.sh 
+  720  ./watcher.sh &
+  721  ls
+  722  find shown_albums_log
+  723  find * | grep "shown_albums_log"
+  724  find * 
+  725  find shown_albums_log
+  726  find . -iname "shown_albums.log"
+  727  find / -iname "shown_albums.log"
+  728  find /etc -iname "shown_albums.log"
+  729  sudo find / -iname "shown_albums.log"
+  730  exit
+  731  ls
+  732  cd picframe_scripts/
+  733  ls
+  734  ./install.sh 
+  735  ls
+  736  cd ..
+  737  ls
+  738  cd picframe
+  739  ls
+  740  cd picframe_scripts/
+  741  ls
+  742  ./install.sh 
+  743  cd ..
+  744  ls
+  745  cd picframe_scripts/
+  746  ls
+  747  ./install.sh 
+  748  sudo reboot now
+  749  screen -ls
+  750  screen -S sync
+  751  screen -r sync 
+  752  top
+  753  screen -S install
+  754  ls
+  755  ource ~/picframe/venv/bin/activate
+  756  source ~/picframe/venv/bin/activate
+  757  picframe
+  758  sudo systemctl status picframe.service
+  759  sudo systemctl status pir_manager.service
+  760  sudo systemctl stop pir_manager.service
+  761  ls
+  762  cd picframe
+  763  ls
+  764  venv/bin/python3 picframe_scripts/test_pir.py
+  765  source /home/schmali/picframe/venv/bin/activate
+  766  pip install RPi.GPIO
+  767  python picframe_scripts/test_pir.py
+  768  sudo systemctl stop watcher.service
+  769  sudo systemctl disable watcher.service
+  770  exit
+  771  ls
+  772  cd picframe
+  773  cd picframe_scripts/
+  774  ./install.sh 
+  775  crontab -e
+  776  exit
+  777  screen -ls
+  778  sudo reboot now
+  779  /bin/bash /home/schmali/picframe/picframe_scripts/start_slideshow_manager.sh
+  780  /bin/bash /home/schmali/picframe/picframe_scripts/sync.sh
+  781  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh 
+  782  sudo mount -t cifs //192.168.178.26/Fotos /path/to/mount_point -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=SMB_VERSION
+  783  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=3.0
+  784  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=1.0
+  785  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=2.1
+  786  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=2.0
+  787  dmesg
+  788  sudo mount -t cifs \192.168.178.26\Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=3.0
+  789  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=2.0
+  790  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh 
+  791  ping 192.168.178.26
+  792  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh 
+  793  ping 192.168.178.26
+  794  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=2.0
+  795  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=3.0
+  796  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh 
+  797  ping 192.168.178.26
+  798  demsg
+  799  dmesg
+  800  sudo mount -t cifs //192.168.178.26/Fotos /mnt/server_share -o credentials=/home/schmali/.smb_credentials,iocharset=utf8,vers=3.0
+  801  sudo reboot now
+  802  ls
+  803  cd picframe
+  804  ls
+  805  cd picframe_scripts/
+  806  ls
+  807  ./install.sh 
+  808  cronjob -e
+  809  crontab -e
+  810  systemctl
+  811  sudo nano /etc/systemd/system/picframe.service
+  812  systemctl status picframe.service 
+  813  systemctl stop picframe.service 
+  814  sudo systemctl stop picframe.service 
+  815  sudo systemctl start picframe.service 
+  816  systemctl status picframe.service 
+  817  screen -S sync
+  818  crontab -e
+  819  sudo systemctl restart picframe.service 
+  820  systemctl status picframe.service 
+  821  screen -r sync 
+  822  systemctl status picframe.service 
+  823  ls
+  824  cd picframe
+  825  ls
+  826  cd picframe_scripts/
+  827  sudo systemctl start picframe.service 
+  828  systemctl status picframe.service 
+  829  screen -S sync
+  830  clear
+  831  bash -x /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  832  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  833  screen -S sync
+  834  systemctl status picframe.service 
+  835  sudo systemctl stop picframe.service 
+  836  sudo systemctl start picframe.service 
+  837  sudo systemctl restart picframe.service 
+  838  systemctl status picframe.service 
+  839  sudo systemctl stop picframe.service 
+  840  sudo nano /etc/systemd/system/picframe.service
+  841  sudo systemctl start picframe.service 
+  842  sudo systemctl stop picframe.service 
+  843  systemctl daemon-reload
+  844  sudo systemctl daemon-reload
+  845  sudo systemctl start picframe.service 
+  846  sudo systemctl status picframe.service 
+  847  sudo systemctl restart picframe.service 
+  848  sudo systemctl status picframe.service 
+  849  dmesg
+  850  sudo systemctl restart picframe.service 
+  851  sudo systemctl status picframe.service 
+  852  sudo systemctl stop picframe.service 
+  853  ls
+  854  cd p
+  855  /bin/bash ./sync_photos.sh 
+  856  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  857  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh | more
+  858  bash -x /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  859  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh | more
+  860  bash -x /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  861  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  862  exit
+  863  screen -r sync 
+  864  screen -r 1245.sync 
+  865  screen -r sync 
+  866  sudo systemctl start picframe.service 
+  867  sudo systemctl stop picframe.service 
+  868  ls
+  869  cd picframe
+  870  ls
+  871  cd picframe_scripts/
+  872  ls
+  873  ./install.sh 
+  874  sudo reboot now
+  875  /bin/bash ./sync_photos.sh 
+  876  ping 192.168.178.26
+  877  ls -l
+  878  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  879  bash -x /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  880  cat /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  881  pwd
+  882  bash -x /home/schmali/picframe/picframe_scripts/sync_photos.sh
+  883  clear
+  884  ls
+  885  ./sync_photos.sh 
+  886  ls -l "/home/schmali/picframe_cache/2007/Berlin - Funkausstellung (WiMAC)/20070101_012725.jpg"
+  887  screen -S sync
+  888  sudo systemctl status picframe.service
+  889  sudo systemctl restart picframe.service
+  890  sudo systemctl status picframe.service
+  891  screen -r sync 
+  892  screen -S sensor
+  893  sudo systemctl status picframe.service
+  894  q
+  895  screen -r sync 
+  896  sudo systemctl restart picframe.service
+  897  sudo systemctl stop picframe.service
+  898  sudo nano /etc/systemd/system/picframe.service
+  899  crontab -e
+  900  sudo systemctl status picframe.service
+  901  sudo systemctl start picframe.service
+  902  sudo 
+  903  sudo systemctl daemon-reload
+  904  sudo systemctl start picframe.service
+  905  sudo systemctl status picframe.service
+  906  sudo systemctl stop picframe.service
+  907  sudo systemctl daemon-reload
+  908  sudo systemctl start picframe.service
+  909  sudo systemctl status picframe.service
+  910  sudo systemctl stop picframe.service
+  911  sudo nano /etc/systemd/system/picframe.service
+  912  sudo systemctl daemon-reload
+  913  sudo systemctl start picframe.service
+  914  sudo systemctl status picframe.service
+  915  screen -ls
+  916  screen -r sync 
+  917  screen -r sensor 
+  918  sudo systemctl restart picframe.service
+  919  sudo systemctl status picframe.service
+  920  sudo systemctl restart picframe.service
+  921  sudo systemctl stop picframe.service
+  922  sudo systemctl start picframe.service
+  923  sudo systemctl status picframe.service
+  924  sudo systemctl stop picframe.service
+  925  rm /home/schmali/picframe_data/data/pictureframe.db3
+  926  sudo systemctl start picframe.service
+  927  sudo systemctl restart picframe.service
+  928  sudo systemctl status picframe.service
+  929  sudo systemctl restart picframe.service
+  930  sudo systemctl status picframe.service
+  931  sudo systemctl restart picframe.service
+  932  sudo systemctl status picframe.service
+  933  tail -f /var/log/kern.log
+  934  tail -f /var/log/photo_sync.log 
+  935  ls -l /var/log/kern.log
+  936  ls -l /var/log/photo_sync.log 
+  937  sudo systemctl status picframe.service
+  938  ls
+  939  cd picframe
+  940  ls
+  941  cd picframe_scripts/
+  942  ls
+  943  sudo systemctl status picframe.service
+  944  screen -ls
+  945  sudo systemctl status pir_manager.service
+  946  sudo systemctl start pir_manager.service
+  947  sudo systemctl status pir_manager.service
+  948  journalctl -u pir_manager.service -f
+  949  sudo apt update
+  950  sudo apt full-upgrade
+  951  sudo dpkg --configure -a
+  952  sudo apt full-upgrade
+  953  sudo reboot
+  954  sudo systemctl stop picframe.service
+  955  screen -S upgrade
+  956  echo Off | sudo tee /sys/class/drm/card0-HDMI-A-1/dpms
+  957  cat /boot/config.txt
+  958  sudo chmod 644 /sys/class/drm/card0-HDMI-A-1/dpms
+  959  echo Off | sudo tee /sys/class/drm/card0-HDMI-A-1/dpms
+  960  sudo apt install kms++-utils
+  961  rpi-hdmi on
+  962  xrandr --output HDMI-1 --off
+  963  xrandr --output HDMI-2 --off
+  964  xrandr --output HDMI --off
+  965  xrandr
+  966  DISPLAY=:0 xrandr --output HDMI-1 --auto
+  967  xrandr --help
+  968  sudo kms-ctl --connector HDMI-A-1 --set-prop DPMS=Off
+  969  xrandr -q
+  970  sudo lshw -c video
+  971  wlr-randr
+  972  sudo apt install raindrop
+  973  arandr
+  974  kmsprint
+  975  sudo kms-ctl --connector HDMI-A-1 --set-prop DPMS=Off
+  976  ls -l /usr/bin/kms*
+  977  WAYLAND_DISPLAY=wayland-1 wlr-randr --output HDMI-A-1
+  978  vcgencmd display_power 0
+  979  xrandr --output HDMI-1 --off
+  980  xrandr --output HDMI-0 --off
+  981  sudo raspi-config nonint
+  982  sudo raspi-config --help
+  983  sudo kmsblank -c HDMI-A-1 off
+  984  sudo kmsblank
+  985  cat /sys/module/kernel/parameters/consoleblank
+  986  sudo raspi-config 
+  987  cat /sys/module/kernel/parameters/consoleblank
+  988  xrandr --output HDMI-1 --off
+  989  DISPLAY=:0 xrandr --output HDMI-1 --auto
+  990  DISPLAY=:1 xrandr --output HDMI-1 --auto
+  991  sudo vcgencmd display_power 0
+  992  /usr/bin/tvservice -o
+  993  kmsprint
+  994  kmsprint --help
+  995  kmsprint --list
+  996  kmsprint -p
+  997  kmsprint --help
+  998  kmsblank
+  999  sudo shutdown now
+ 1000  vcgencmd display_power 1
+ 1001  exit
+ 1002  sudo systemctl status picframe.service
+ 1003  cat /sys/class/drm/card0-HDMI-A-1/dpms
+ 1004  sudo kmsblank -c HDMI-A-1 off
+ 1005  sudo find / -name "kms-ctl"
+ 1006  cat /sys/class/drm/card0-HDMI-A-1/dpms
+ 1007  sudo kmsblank -c HDMI-A-1
+ 1008  sudo dmesg -c
+ 1009  sudo kmsblank -c HDMI-A-1
+ 1010  sudo dmesg -c
+ 1011  dmesg
+ 1012  sudo dmesg -c
+ 1013  sudo kmsblank -c HDMI-A-1
+ 1014  dmesg
+ 1015  sudo systemctl stop picframe.service
+ 1016  sudo kmsblank -c HDMI-A-1
+ 1017  dmesg
+ 1018  echo "Off" > /sys/class/drm/card0-HDMI-A-1/dpms
+ 1019  sudo chmod 666 /sys/class/drm/card0-HDMI-A-1/dpms
+ 1020  echo "Off" > /sys/class/drm/card0-HDMI-A-1/dpms
+ 1021  sudo vcgencmd display_power 0
+ 1022  sudo vcgencmd display_power 1
+ 1023  sudo kmsblank -c HDMI-A-1
+ 1024  kmsblank
+ 1025  kmsblank --help
+ 1026  sudo kmsblank -c HDMI-A-1
+ 1027  sudo systemctl start picframe.service
+ 1028  sudo systemctl status picframe.service
+ 1029  sudo systemctl restart picframe.service
+ 1030  sudo systemctl status picframe.service
+ 1031  sudo systemctl stop picframe.service
+ 1032  sudo systemctl start picframe.service
+ 1033  sudo systemctl status picframe.service
+ 1034  sudo systemctl start picframe.service
+ 1035  sudo systemctl status picframe.service
+ 1036  sudo systemctl restart picframe.service
+ 1037  sudo systemctl status picframe.service
+ 1038  dmesg
+ 1039  sudo systemctl status picframe.service
+ 1040  sudo nano /etc/systemd/system/pir_manager.service
+ 1041  sudo systemctl daemon-reload
+ 1042  sudo systemctl enable pir_manager.service
+ 1043  sudo systemctl start pir_manager.service
+ 1044  sudo systemctl status pir_manager.service
+ 1045  sudo systemctl stop pir_manager.service
+ 1046  sudo systemctl start pir_manager.service
+ 1047  sudo systemctl stop picframe.service
+ 1048  sudo vcgencmd display_power 0
+ 1049  sudo kmsblank -c HDMI-A-1
+ 1050  sudo systemctl restart pir_manager.service
+ 1051  sudo systemctl start picframe.service
+ 1052  sudo systemctl statuspir_manager.service
+ 1053  sudo systemctl status pir_manager.service
+ 1054  journalctl -u pir_manager.service -n 50 --no-pager
+ 1055  sudo pip3 install paho-mqtt
+ 1056  sudo systemctl start pir_manager.service
+ 1057  sudo systemctl status pir_manager.service
+ 1058  sudo systemctl restart pir_manager.service
+ 1059  sudo systemctl status pir_manager.service
+ 1060  sudo systemctl restart pir_manager.service
+ 1061  sudo systemctl status pir_manager.service
+ 1062  journalctl -u pir_manager.service -f
+ 1063  sudo systemctl stop pir_manager.service
+ 1064  sudo systemctl stop picframe.service
+ 1065  ls
+ 1066  cd picframe
+ 1067  ls
+ 1068  cd picframe_scripts/
+ 1069  ls
+ 1070  ./install.sh 
+ 1071  sudo reboot now
+ 1072  dmesg
+ 1073  sudo systemctl status picframe.service
+ 1074  sudo systemctl status pir_manager.service
+ 1075  journalctl -f -u pir_manager.service
+ 1076  kmsblank
+ 1077  journalctl -b
+ 1078  bash /home/schmali/picframe/picframe_scripts/install.sh
+ 1079  reboot
+ 1080  sudo reboot
+ 1081  journalctl -b
+ 1082  dmesg
+ 1083  sudo systemctl status pir_manager.service
+ 1084  sudo systemctl status picframe_manager.service
+ 1085  sudo systemctl status picframe.service
+ 1086  dmesg | grep "picframe"
+ 1087  dmesg | grep "manager"
+ 1088  journalctl -f -u pir_manager.service
+ 1089  journalctl -f -u pir_manager.service | grep "python"
+ 1090  ls
+ 1091  cd picframe
+ 1092  ls
+ 1093  cd picframe_scripts/
+ 1094  ls
+ 1095  ./install.sh 
+ 1096  sudo systemctl stop picframe.service
+ 1097  sudo systemctl stop pir_manager.service
+ 1098  ./install.sh 
+ 1099  sudo reboot
+ 1100  sudo systemctl status pir_manager.service
+ 1101  sudo systemctl status picframe.service
+ 1102  sudo systemctl stop pir_manager.service
+ 1103  ls
+ 1104  cd picframe
+ 1105  cd picframe_scripts/
+ 1106  ./install.sh 
+ 1107  reboot
+ 1108  sudo reboot
+ 1109  sudo systemctl stop pir_manager.service
+ 1110  sudo systemctl status pir_manager.service
+ 1111  sudo systemctl start pir_manager.service
+ 1112  sudo systemctl status picframe.service
+ 1113  journalctl -u picframe.service -n 50 --no-pager
+ 1114  cd picframe
+ 1115  cd picframe_scripts/
+ 1116  ./install.sh 
+ 1117  sudo reboot
+ 1118  sudo systemctl status picframe.service
+ 1119  cd picframe
+ 1120  cd picframe_scripts/
+ 1121  ./install.sh 
+ 1122  sudo reboot
+ 1123  cd picframe
+ 1124  cd picframe_scripts/
+ 1125  ./install.sh 
+ 1126  sudo reboot
+ 1127  sudo systemctl status picframe.service
+ 1128  sudo systemctl status pir_manager.service
+ 1129  ./install.sh 
+ 1130  cd picframe
+ 1131  cd picframe_scripts/
+ 1132  ./install.sh 
+ 1133  sudo reboot
+ 1134  sudo systemctl status picframe.service
+ 1135  sudo systemctl start picframe.service
+ 1136  sudo systemctl status picframe.service
+ 1137  journalctl -u picframe.service -n 50 --no-pager
+ 1138  sudo systemctl start picframe.service
+ 1139  sudo systemctl status picframe.service
+ 1140  sudo systemctl status pir_manager.service
+ 1141  ls
+ 1142  cd ..
+ 1143  ls
+ 1144  cd schmali/
+ 1145  ös
+ 1146  cd picframe
+ 1147  ls
+ 1148  cd ..
+ 1149  cd picframe_cache/
+ 1150  ls
+ 1151  find geburtstag
+ 1152  find * | grep geburtstag
+ 1153  find . -type d
+ 1154  find . -type d | grep "geburtstag"
+ 1155  find . -type d | grep "haar"
+ 1156  find . -type d -name "haar"
+ 1157  find . -type d -name "Haar"
+ 1158  find . -type d -iname "geburtstag"
+ 1159  find . -type d -iname "*geburtstag*"
+ 1160  find . -type d -iname "*wasent*"
+ 1161  find . -type d -iname "*wien*"
+ 1162  sudo systemctl restart picframe.service
+ 1163  sudo systemctl status picframe.service
+ 1164  find . -type d -iname "*defre*"
+ 1165  crontba -e
+ 1166  crontab -e
+ 1167  journalctl -u picframe.service -n 50 --no-pager
+ 1168  crontab -e
+ 1169  journalctl -u picframe.service -n 50 --no-pager
+ 1170  sudo systemctl start picframe.service
+ 1171  sudo systemctl status picframe.service
+ 1172  sudo systemctl status pir_manager.service
+ 1173  sudo reboot
+ 1174  kmsblank
+ 1175  sudo systemctl status pir_manager.service
+ 1176  sudo systemctl status picframe.service
+ 1177  crontab -e
+ 1178  ls /var/log/
+ 1179  ls /var/log/ l
+ 1180  ls /var/log/ -l
+ 1181  cat /var/log/photo_sync.log 
+ 1182  sudo systemctl status pir_manager.service
+ 1183  journalctl -u picframe.service -n 50 --no-pager
+ 1184  sudo systemctl restart pir_manager.service
+ 1185  sudo systemctl restart picframe.service
+ 1186  journalctl -u picframe.service -n 50 --no-pager
+ 1187  sudo systemctl status picframe.service
+ 1188  sudo systemctl restart picframe.service
+ 1189  sudo systemctl status picframe.service
+ 1190  sudo systemctl stop picframe.service
+ 1191  sudo systemctl restart picframe.service
+ 1192  sudo systemctl status picframe.service
+ 1193  journalctl -u picframe.service -n 50 --no-pager
+ 1194  sudo systemctl stop picframe.service
+ 1195  sudo systemctl start picframe.service
+ 1196  sudo systemctl status picframe.service
+ 1197  sudo systemctl restart picframe.service
+ 1198  sudo systemctl status picframe.service
+ 1199  ls -l /home/schmali/picframe/venv/bin/picframe && head -n 10 /home/schmali/picframe/venv/bin/picframe && /home/schmali/picframe/venv/bin/python -c "from picframe import __version__; print(__version__)" && /home/schmali/picframe/venv/bin/python -c "import picframe.image_cache; print(picframe.image_cache.__file__)"
+ 1200  source venv/bin/activate
+ 1201  ls
+ 1202  cd ..
+ 1203  ls
+ 1204  cd schmali/
+ 1205  ls
+ 1206  cd picframe
+ 1207  source venv/bin/activate
+ 1208  pip install -e
+ 1209  pip install -e .
+ 1210  deactivate
+ 1211  sudo systemctl restart picframe.service
+ 1212  sudo systemctl status picframe.service
+ 1213  sudo reboot
+ 1214  sudo systemctl stop picframe.service
+ 1215  sudo systemctl start picframe.service
+ 1216  sudo systemctl status picframe.service
+ 1217  crontab -e
+ 1218  sudo systemctl restart picframe.service
+ 1219  crontab -e
+ 1220  cat /var/log/photo_sync.log 
+ 1221  ls /var/log/photo_sync.log 
+ 1222  ls -l /var/log/photo_sync.log 
+ 1223  time
+ 1224  date
+ 1225  ls -l /var/log/photo_sync.log 
+ 1226  sudo systemctl status picframe.service
+ 1227  crontab -e
+ 1228  sudo /usr/sbin/ifconfig wlan0 up
+ 1229  journalctl -u picframe.service -n 50 --no-pager
+ 1230  journalctl -u picframe.service -n 50 --no-pager | grep "rf"
+ 1231  sudo systemctl restart pir_manager.service
+ 1232  sudo systemctl status pir_manager.service
+ 1233  sudo rfkill unblock wifi
+ 1234  crontab -e
+ 1235  sudo reboot now
+ 1236  sudo systemctl status picframe.service
+ 1237  sudo systemctl status pir_manager.service
+ 1238  sudo systemctl restart picframe.service
+ 1239  sudo systemctl status picframe.service
+ 1240  sudo systemctl status pir_manager.service
+ 1241  sudo systemctl stop picframe.service
+ 1242  kmsblank
+ 1243  sudo systemctl status pir_manager.service
+ 1244  sudo systemctl status picframe.service
+ 1245  sudo systemctl status pir_manager.service
+ 1246  sudo systemctl restart pir_manager.service
+ 1247  sudo systemctl status pir_manager.service
+ 1248  sudo systemctl restart pir_manager.service
+ 1249  sudo systemctl status pir_manager.service
+ 1250  sudo systemctl restart pir_manager.service
+ 1251  sudo systemctl status pir_manager.service
+ 1252  sudo systemctl start picframe.service
+ 1253  sudo systemctl status picframe.service
+ 1254  sudo shutdown now
+ 1255  sudo rfkill unblock wifi
+ 1256  kmsblank
+ 1257  sudo systemctl status picframe.service
+ 1258  sudo systemctl status pir_manager.service
+ 1259  sudo systemctl restart pir_manager.service
+ 1260  sudo systemctl status pir_manager.service
+ 1261  crontab -e
+ 1262  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh >> /home/schmali/photo_sync.log 2>&1
+ 1263  screen -S sync
+ 1264  df /home/schmali/picframe_cache/
+ 1265  du /home/schmali/picframe_cache/
+ 1266  du /home/schmali/
+ 1267  du /home/schmali/picframe_cache/
+ 1268  du -sh /home/schmali/picframe_cache/
+ 1269  du /home/schmali/picframe_cache/
+ 1270  du -sh /home/schmali/picframe_cache/
+ 1271  ls
+ 1272  more photo_sync.log 
+ 1273  cat photo_sync.log 
+ 1274  crontab -e
+ 1275  screen -S sync
+ 1276  more photo_sync.log 
+ 1277  cat photo_sync.log 
+ 1278  du -sh /home/schmali/picframe_cache/screen -R sy
+ 1279  screen -r sync 
+ 1280  sudo systemctl status pir_manager.service
+ 1281  sudo systemctl status picframe.service
+ 1282  screen -r sync 
+ 1283  sudo systemctl status picframe.service
+ 1284  screen -r sync 
+ 1285  sudo systemctl status picframe.service
+ 1286  sudo systemctl status pir_manager.service
+ 1287  sudo systemctl status picframe.service
+ 1288  dccutil
+ 1289  sudo apt install dccutil
+ 1290  sudo add-apt-repository ppa:rockowitz/ddcutil
+ 1291  screen -S sync
+ 1292  sudo apt-get update
+ 1293  sudo add-apt-repository ppa:rockowitz/ddcutil
+ 1294  kmsblank --help
+ 1295  apt install ddcutil
+ 1296  sudo apt install ddcutil
+ 1297  ddcutil capabilities
+ 1298  ddcutil setvcp d6 5 # OFF
+ 1299  nano /etc/modules
+ 1300  sudo nano /etc/modules
+ 1301  ddcutil capabilities
+ 1302  xrandr --output HDMI-1 --off
+ 1303  sudo systemctl stop picframe.service
+ 1304  sudo nano /boot/config/txt
+ 1305  sudo nano /boot/config.txt
+ 1306  sudo modprobe i2c_dev
+ 1307  sudo add-apt-repository ppa:rockowitz/ddcutil
+ 1308  ddcutil --version
+ 1309  git clone https://github.com/rockowitz/ddcutil.git
+ 1310  cd ddcutil
+ 1311  ./autogen.sh
+ 1312  ./configure
+ 1313  make
+ 1314  sudo make install
+ 1315  sudo apt install autoconf automake autotools-dev libtool m4 git i2c-tools -y
+ 1316  cd ddcutil
+ 1317  ./autogen.sh
+ 1318  ./configure
+ 1319  make
+ 1320  sudo make install
+ 1321  sudo apt install libjansson-dev
+ 1322  cd ddcutil
+ 1323  ./autogen.sh
+ 1324  ./configure
+ 1325  make
+ 1326  sudo make install
+ 1327  sudo apt install libusb-1.0-0-dev
+ 1328  cd ddcutil
+ 1329  ./autogen.sh
+ 1330  ./configure
+ 1331  make
+ 1332  sudo make install
+ 1333  ddcutil
+ 1334  ddcutil --version
+ 1335  ls
+ 1336  ls -l
+ 1337  sudo nano /etc/modules
+ 1338  sudo reboot now
+ 1339  crontab -e
+ 1340  /bin/bash /home/schmali/picframe/picframe_scripts/sync_photos.sh >> /home/schmali/photo_sync.log 2>&1
+ 1341  ddcutil
+ 1342  ddcutil capabilities
+ 1343  xrandr
+ 1344  sudo xrandr
+ 1345  sudo ddcutil capabilities
+ 1346  vcgencmd
+ 1347  vcgencmd display_power 0
+ 1348  vcgencmd commands
+ 1349  vcgencmd display_power 1
+ 1350  vcgencmd display_power 2
+ 1351  sudo vcgencmd display_power 0
+ 1352  sudo ddccontrol -p
+ 1353  ddcutil vcpinfo
+ 1354  ddcutil vcpinfo d6
+ 1355  ddcutil vcpinfo d6 --verbose
+ 1356  ddcutil setvcp d6 5
+ 1357  ddcutil detect
+ 1358  ddcutil --version
+ 1359  ddcutil detect
+ 1360  ddcutil setvcp d6 4
+ 1361  Display not found
+ 1362  sudo apt install cec-utils -y
+ 1363  echo 'scan' | cec-client -s -d 1
+ 1364  echo 'standby 0' | cec-client -s -d 1
+ 1365  echo 'on 0' | cec-client -s -d 1
+ 1366  journalctl -u picframe.service -n 50 --no-pager | grep "rf"
+ 1367  journalctl -u picframe.service -n 50 --no-pager
+ 1368  journalctl
+ 1369  journalctl -n 50
+ 1370  journalctl -n 200 | grep "error"
+ 1371  journalctl -n 200
+ 1372  journalctl -n 1000 | grep "error"
+ 1373  journalctl -n 1000 | grep "warn"
+ 1374  sudo reboot now
+ 1375  journalctl -u picframe.service -n 50 --no-pager
+ 1376  sudo reboot now
+ 1377  sudo systemctl status picframe.service
+ 1378  sudo systemctl status pir_manager.service
+ 1379  sudo systemctl restart picframe.service
+ 1380  ls
+ 1381  sudo systemctl restart pir_manager.service
+ 1382  sudo systemctl status pir_manager.service
+ 1383  ls
+ 1384  cd picframe
+ 1385  ls
+ 1386  cd picframe_scripts/
+ 1387  ls
+ 1388  ./test_pir.py 
+ 1389  exit
+ 1390  crontab -e
+ 1391  exit
+ 1392  sudo systemctl status pir_manager.service
+ 1393  sudo systemctl status picframe.service
+ 1394  sudo systemctl status pir_manager.service
+ 1395  exit
+ 1396  sudo systemctl restart pir_manager.service
+ 1397  sudo systemctl status pir_manager.service
+ 1398  sudo systemctl restart pir_manager.service
+ 1399  sudo systemctl status pir_manager.service
+ 1400  sudo systemctl status picframe.service
+ 1401  sudo systemctl status pir_manager.service
+ 1402  journalctl -u picframe.service -n 50 --no-pager
+ 1403  journalctl -u pir_manager.service -n 50 --no-pager
+ 1404  sudo systemctl restart pir_manager.service
+ 1405  sudo systemctl status pir_manager.service
+ 1406  journalctl -u pir_manager.service -n 50 --no-pager
+ 1407  journalctl -u pir_manager.service -n 100 --no-pager
+ 1408  journalctl -u pir_manager.service -n 50 --no-pager
+ 1409  sudo systemctl restart pir_manager.service
+ 1410  journalctl -u pir_manager.service -n 100 --no-pager
+ 1411  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1412  xit
+ 1413  exit
+ 1414  journalctl -u pir_manager.service -n 50 --no-pager
+ 1415  curl http://localhost:9000/?paused=false
+ 1416  sudo systemctl restart pir_manager.service
+ 1417  journalctl -u pir_manager.service -n 50 --no-pager
+ 1418  exit
+ 1419  journalctl -u pir_manager.service -n 50 --no-pager
+ 1420  curl -v http://localhost:9000/?paused=false
+ 1421  curl -v http://localhost:9000/?paused=true
+ 1422  curl -v http://localhost:9000/?paused=false
+ 1423  sudo systemctl restart pir_manager.service
+ 1424  journalctl -u pir_manager.service -n 50 --no-pager
+ 1425  sudo systemctl restart pir_manager.service
+ 1426  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1427  ls
+ 1428  cd picframe
+ 1429  ls
+ 1430  cd picframe_scripts/
+ 1431  ls
+ 1432  ./test_pir.py 
+ 1433  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1434  sudo systemctl restart pir_manager.service
+ 1435  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1436  sudo systemctl restart pir_manager.service
+ 1437  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1438  journalctl -u pir_manager.service -n 50 --no-pager
+ 1439  sudo systemctl restart pir_manager.service
+ 1440  journalctl -u pir_manager.service -n 50 --no-pager
+ 1441  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1442  sudo python3 -m pip install RPi.GPIO
+ 1443  sudo systemctl restart pir_manager.service
+ 1444  cat /etc/systemd/system/pir_manager.service
+ 1445  cd /home/schmali/picframe
+ 1446  source venv/bin/activate
+ 1447  pip install RPi.GPIO
+ 1448  deactivate
+ 1449  sudo systemctl restart pir_manager.service
+ 1450  journalctl -u pir_manager.service -n 50 --no-pager
+ 1451  journalctl -f -u pir_manager.servicejournalctl -f -u pir_manager.service
+ 1452  sudo systemctl restart picframe.service
+ 1453  journalctl -u pir_manager.service -n 50 --no-pager
+ 1454  journalctl --disk-usage
+ 1455  journalctl --verify
+ 1456  sudo /etc/systemd/journald.conf
+ 1457  sudo nano /etc/systemd/journald.conf
+ 1458  sudo systemctl restart systemd-journald
+ 1459  sudo journalctl --vacuum-time=2week
+ 1460  sudo systemctl restart systemd-journald
+ 1461  sudo nano /etc/systemd/journald.conf
+ 1462  sudo journalctl --vacuum-size=500M
+ 1463  journalctl --verify
+ 1464  sudo journalctl --vacuum-time=0
+ 1465  sudo journalctl --vacuum-size=0
+ 1466  journalctl --verify
+ 1467  journalctl --disk-usage
+ 1468  sudo journalctl --rotate
+ 1469  sudo journalctl --vacuum-time=0
+ 1470  journalctl --disk-usage
+ 1471  journalctl --verify
+ 1472  sudo journalctl --verify
+ 1473  sudo journalctl --flush --rotate
+ 1474  sudo systemctl stop systemd-journald
+ 1475  sudo rm -rf /var/log/journal/*
+ 1476  sudo systemctl start systemd-journald
+ 1477  sudo systemctl restart systemd-journald
+ 1478  sudo journalctl --verify
+ 1479  exit
+ 1480  dmesg
+ 1481  journalctl -u pir_manager.service -n 50 --no-pager
+ 1482  journalctl -u pir_manager.service -n 100 --no-pager
+ 1483  journalctl -n 100 --no-pager
+ 1484  sudo crontab -e
+ 1485  crontab -e
+ 1486  sudo systemctl restart pir_manager.service
+ 1487  journalctl -n 5000 --no-pager | grep "block"
+ 1488  journalctl -n 5000 --no-pager | grep "error"
+ 1489  journalctl -n 5000 --no-pager | grep "warn"
+ 1490  fbset
+ 1491  tvservice -s
+ 1492  cat /sys/class/drm/card0-HDMI-A-1/modes
+ 1493  sudo apt-get install edid-decode
+ 1494  edid-decode < /sys/class/drm/card0-HDMI-A-1/edid
+ 1495  sudo nano /boot/config.txt 
+ 1496  sudo reboot now
+ 1497  journalctl -n 5000 --no-pager | grep "error"
+ 1498  journalctl -n 5000 --no-pager | grep "block"
+ 1499  crontab -e
+ 1500  sudo systemctl restart pir_manager.service
+ 1501  sudo systemctl restart picframe.service
+ 1502  free -h
+ 1503  crontab -e
+ 1504  journalctl -b -1 -e
+ 1505  journalctl -b -2 -e
+ 1506  less /var/log/syslog.1
+ 1507  less /var/log/syslog.1 | grep "error"
+ 1508  less /var/log/syslog.1 | grep block"
+ 1509  less /var/log/syslog.1 | grep "block"
+ 1510  less /var/log/kernlog.1
+ 1511  journalctl -b -2 -e
+ 1512  df
+ 1513  df -h
+ 1514  sudo touch /forcefsck
+ 1515  history
+ 1516  ls
+ 1517  history > history.log
