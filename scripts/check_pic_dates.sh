@@ -37,6 +37,8 @@ fi
 # Change to the root directory
 cd "$ROOT_DIR" || exit
 
+PROCESS_ALL=false
+
 # Find all year directories
 for YEAR_DIR in */;
  do
@@ -44,12 +46,24 @@ for YEAR_DIR in */;
     if [ -d "$YEAR_DIR" ] && [[ ${YEAR_DIR%/} =~ ^[0-9]{4}$ ]]; then
         YEAR_FROM_DIR=${YEAR_DIR%/}
         echo "Processing directory: $YEAR_DIR"
-        read -p "Continue? (Y/N/S) " -n 1 -r
-        echo
+
+        if [ "$PROCESS_ALL" = false ]; then
+            read -p "Continue? (Y/N/S/A) " -n 1 -r
+            echo
+        else
+            REPLY="Y"
+        fi
+
         case $REPLY in
+            [Aa]* )
+                PROCESS_ALL=true
+                ;&&
             [Yy]* )
                 # Find all image files in the year directory
-                find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d $'' FILE;
+                find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d 
+    fi
+done
+' FILE;
                  do
                     # Get the file creation and modification dates
                     CREATE_DATE=$(stat -c %y "$FILE")
@@ -100,8 +114,10 @@ for YEAR_DIR in */;
                 exit 0
                 ;;
             * )
-                echo "Invalid input. Aborting."
-                exit 1
+                if [ "$PROCESS_ALL" = false ]; then
+                    echo "Invalid input. Aborting."
+                    exit 1
+                fi
                 ;;
         esac
     fi
