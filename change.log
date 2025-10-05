@@ -28,3 +28,4 @@
 - Corrected the clock's vertical position calculation in `viewer_display.py`.
 - Fixed a bug in `check_pic_dates.sh` that caused an invalid date format for the `touch` command.
 - Added an 'A' (All) option to `check_pic_dates.sh` to process all directories without further prompts.
+- Fixed a syntax error (`;&&`) in `check_pic_dates.sh`.
