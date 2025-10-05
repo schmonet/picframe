@@ -57,7 +57,7 @@ for YEAR_DIR in */;
         case $REPLY in
             [Aa]* )
                 PROCESS_ALL=true
-                ;&&
+                ;&
             [Yy]* )
                 # Find all image files in the year directory
                 find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d 
