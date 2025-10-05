@@ -79,3 +79,8 @@
 * State: The user reported that the `clock_hgt_offset_pct` setting for the clock is not working as expected.
 * Problem: A small percentage value for `clock_hgt_offset_pct` results in a much larger visual offset.
 * Solution: I have corrected the formula for the clock's vertical position in `viewer_display.py` to accurately reflect the percentage-based offset.
+
+2025-10-05 14:20:00:
+* State: The user reported an error with the `check_pic_dates.sh` script.
+* Problem: The `touch` command fails with an invalid date format error because a hyphen is used between the month and day.
+* Solution: I have corrected the `check_pic_dates.sh` script to use the `+%m%d` format for the date, which is compatible with the `touch -t` command.
