@@ -52,3 +52,7 @@
 - Enhanced the script to differentiate between portrait and landscape images, adjusting text size and position accordingly.
 - Modified the text overlay to use a bold font for better readability.
 - Finalized `scripts/create_test_images.sh` by adjusting text position and style for portrait images, including larger text and a refined outline for better visibility.
+
+2025-10-18
+- Committed a large set of changes including documentation updates, new scripts, and a complete refresh of the test media in `test/images` and `test/videos`.
+- Updated `README.md`, `TASKS.md`, and `TODO.md` to reflect the latest changes.
