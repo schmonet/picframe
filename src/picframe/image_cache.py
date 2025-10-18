@@ -23,7 +23,7 @@ class ImageCache:
                      'IPTC Caption/Abstract': 'caption',
                      'IPTC Object Name': 'title'}
 
-    def __init__(self, picture_dir, follow_links, db_file, geo_reverse, update_interval, portrait_pairs=False):
+    def __init__(self, picture_dir, follow_links, db_file, geo_reverse, update_interval, portrait_pairs=False, ffprobe_path=None):
         # TODO these class methods will crash if Model attempts to instantiate this using a
         # different version from the latest one - should this argument be taken out?
         self.__modified_folders = []
@@ -37,6 +37,7 @@ class ImageCache:
         self.__geo_reverse = geo_reverse
         self.__update_interval = update_interval
         self.__portrait_pairs = portrait_pairs  # TODO have a function to turn this on and off?
+        self.__ffprobe_path = ffprobe_path
         self.__db = self.__create_open_db(self.__db_file)
         self.__db_write_lock = threading.Lock()  # lock to serialize db writes between threads
         # NB this is where the required schema is set
@@ -555,7 +556,7 @@ class ImageCache:
             dict: A dictionary containing the meta keys.
             Note, the 'key' must match a field in the 'meta' table
         """
-        meta = get_video_info(file_path_name)
+        meta = get_video_info(file_path_name, self.__ffprobe_path)
 
         # Dict to store interesting EXIF data
         # Note, the 'key' must match a field in the 'meta' table

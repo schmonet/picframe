@@ -60,7 +60,6 @@ To find out what's new or improved have a look at the [changelog](https://github
 [glenvorel](https://github.com/glenvorel) Thanks for the new keyboard, mouse and touch screen support.
 
 Many Thanks to Wolfgang [www.thedigitalpictureframe.com](https://www.thedigitalpictureframe.com/) for your inspiring work. 
-
 A special Thank to Paddy Gaunt one of the authors of the [pi3d](https://github.com/pi3d/pi3d_demos) project. You are doing a great job!
 
 Last but no least a big Thank You to Jeff Godfrey. Your auto mat feature and database driven cache is an outstanding piece of code.
@@ -69,15 +68,22 @@ Last but no least a big Thank You to Jeff Godfrey. Your auto mat feature and dat
 
 ## Fork Information
 
-This repository is a fork of the original [picframe by helgeerbe](https://github.com/helgeerbe/picframe). It includes several modifications and new scripts to enhance functionality.
+This repository is a fork of the original [picframe by helgeerbe](https://github.com/helgeerbe/picframe). It includes several modifications and new scripts to enhance functionality and automation.
 
 ### Key Changes in this Fork
-*   **PIR Sensor Management (`pir_manager.py`):** A robust script to control the display and picframe service based on motion detection (PIR sensor) and a day/night schedule. It uses `cec-client` for display power and direct HTTP calls to control the slideshow, removing the need for an MQTT broker for this functionality.
-*   **Advanced Photo Sync (`sync_photos.sh`):** An improved script to synchronize photos from an SMB share, manage a local cache, and avoid repeating albums.
-*   **New Slideshow Features:**
+*   **Advanced Scripting:** Introduction of several utility scripts for automation and maintenance (see [Utility Scripts](#utility-scripts) below).
+*   **Enhanced Slideshow Features:**
     *   **Group by Folder (`group_by_dir`):** Displays all photos from one album before moving to the next.
     *   **Delete After Show (`delete_after_show`):** Option to permanently delete photos from the cache after they have been displayed.
-*   **General stability improvements** and bug fixes.
+*   **General stability improvements** and bug fixes throughout the application.
+
+### Utility Scripts
+This fork includes a collection of powerful scripts located in the `scripts/` directory to automate and manage the picture frame.
+
+*   **`pir_manager.py`:** A robust script to control the display and picframe service based on motion detection (PIR sensor) and a day/night schedule. It uses `cec-client` for display power and direct HTTP calls to control the slideshow, removing the need for an MQTT broker for this functionality. It also allows overriding the night schedule if presence is detected.
+*   **`sync_photos.sh`:** A sophisticated script to synchronize both photos and videos from separate SMB shares into a single, unified local cache. It manages separate storage quotas for each media type, prioritizes photo downloads, and only downloads videos when the photo quota is nearly full. The script is designed to continuously fill the cache without automatically deleting files.
+*   **`check_pic_dates.sh`:** A maintenance script to validate and correct file dates for both images and videos. It compares file system dates with EXIF/metadata dates and can interactively (or automatically) fix inconsistencies, ensuring chronological accuracy.
+*   **`create_test_images.sh`:** A utility to generate a set of test images. It converts PNGs to JPGs, burns image metadata (dimensions, color space) as a text overlay onto the image, and adds randomized, plausible EXIF data, including GPS coordinates. This is useful for testing the frame's display capabilities.
 
 ### Attribution
 *   **Author of modifications:** Martin Schmalohr

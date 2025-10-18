@@ -1,13 +1,15 @@
 #!/bin/bash
 
-# This script checks and corrects the dates of image files in a photo archive.
+# This script checks and corrects the dates of media files (images and videos) in an archive.
 # It compares the year from the directory name with the file's creation and
-# modification dates, and with the EXIF data of the image.
+# modification dates, and with the metadata of the file (EXIF for images, container data for videos).
 
-# Usage: ./check_pic_dates.sh /path/to/photo/archive
+# Usage: ./check_pic_dates.sh /path/to/media/archive
 
 # --- CONFIGURATION ---
 LOG_FILE="check_pic_dates.log"
+# List of file extensions to check, separated by |
+FILE_EXTENSIONS="jpg|jpeg|png|heic|mkv|mp4|mov|avi"
 
 
 # --- FUNCTIONS ---
@@ -59,8 +61,8 @@ for YEAR_DIR in */;
                 PROCESS_ALL=true
                 ;&
             [Yy]* )
-                # Find all image files in the year directory
-                find "$YEAR_DIR" -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | while IFS= read -r -d $'\0' FILE;
+                # Find all media files in the year directory
+                find "$YEAR_DIR" -type f -iregex ".*\.(${FILE_EXTENSIONS})" -print0 | while IFS= read -r -d $'\0' FILE;
                  do
                     # Get the file creation and modification dates
                     CREATE_DATE=$(stat -c %y "$FILE")
@@ -70,37 +72,54 @@ for YEAR_DIR in */;
                     YEAR_FROM_CREATE=$(date -d "$CREATE_DATE" +%Y)
                     YEAR_FROM_MODIFY=$(date -d "@$MODIFY_DATE" +%Y)
 
-                    # Get the EXIF date
-                    EXIF_DATE=$(exiftool -s -s -s -DateTimeOriginal "$FILE")
+                    # --- Metadata Extraction ---
+                    # Try to get image EXIF date first, then fall back to common video date tags
+                    META_DATE=$(exiftool -s -s -s -DateTimeOriginal "$FILE")
+                    if [ -z "$META_DATE" ]; then
+                        META_DATE=$(exiftool -s -s -s -CreateDate "$FILE")
+                    fi
+                    if [ -z "$META_DATE" ]; then
+                        META_DATE=$(exiftool -s -s -s -MediaCreateDate "$FILE")
+                    fi
 
-                    if [ -n "$EXIF_DATE" ]; then
-                        YEAR_FROM_EXIF=$(echo "$EXIF_DATE" | cut -d: -f1)
+                    if [ -n "$META_DATE" ] && [ "$META_DATE" != "0000:00:00 00:00:00" ]; then
+                        # Normalize date format for reliable parsing
+                        NORMALIZED_DATE=$(echo "$META_DATE" | sed 's/:/-/g')
+                        YEAR_FROM_META=$(date -d "$NORMALIZED_DATE" +%Y 2>/dev/null || echo "")
 
-                        # 5.a
-                        if [ "$YEAR_FROM_EXIF" != "$YEAR_FROM_CREATE" ] || [ "$YEAR_FROM_EXIF" != "$YEAR_FROM_MODIFY" ]; then
-                            log_msg "Updating file date for $FILE to EXIF date $EXIF_DATE"
-                            touch -d "$EXIF_DATE" "$FILE"
-                        fi
-
-                        # 5.b
-                        if [ "$YEAR_FROM_EXIF" != "$YEAR_FROM_DIR" ]; then
-                            read -p "Move $FILE to $ROOT_DIR/$YEAR_FROM_EXIF? (Y/N) " -n 1 -r
-                            echo
-                            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                                NEW_DIR="$ROOT_DIR/$YEAR_FROM_EXIF/$(dirname "${FILE#*/}")"
-                                mkdir -p "$NEW_DIR"
-                                mv "$FILE" "$NEW_DIR"
-                                log_msg "Moved $FILE to $NEW_DIR"
+                        if [ -z "$YEAR_FROM_META" ]; then
+                            log_msg "Could not parse metadata date '$META_DATE' for file $FILE. Skipping metadata checks."
+                            # Fall through to the 'no metadata' logic below
+                        else
+                            # 5.a - Update file date to match metadata date
+                            if [ "$YEAR_FROM_META" != "$YEAR_FROM_CREATE" ] || [ "$YEAR_FROM_META" != "$YEAR_FROM_MODIFY" ]; then
+                                FULL_META_DATE_FOR_TOUCH=$(date -d "$NORMALIZED_DATE" +%Y-%m-%dT%H:%M:%S)
+                                log_msg "Updating file date for $FILE to metadata date $FULL_META_DATE_FOR_TOUCH"
+                                touch -d "$FULL_META_DATE_FOR_TOUCH" "$FILE"
                             fi
-                        fi
-                    else
-                        # 6.a
-                        if [ "$YEAR_FROM_DIR" != "$YEAR_FROM_CREATE" ] || [ "$YEAR_FROM_DIR" != "$YEAR_FROM_MODIFY" ]; then
-                            log_msg "Updating year for $FILE to $YEAR_FROM_DIR"
-                            MONTH_DAY_CREATE=$(date -d "$CREATE_DATE" +%m%d)
-                            touch -t "${YEAR_FROM_DIR}${MONTH_DAY_CREATE}0000" "$FILE"
+
+                            # 5.b - Check if file needs to be moved to a different year directory
+                            if [ "$YEAR_FROM_META" != "$YEAR_FROM_DIR" ]; then
+                                read -p "Move $FILE to $ROOT_DIR/$YEAR_FROM_META? (Y/N) " -n 1 -r
+                                echo
+                                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                                    NEW_DIR="$ROOT_DIR/$YEAR_FROM_META/$(dirname "${FILE#*/}")"
+                                    mkdir -p "$NEW_DIR"
+                                    mv "$FILE" "$NEW_DIR"
+                                    log_msg "Moved $FILE to $NEW_DIR"
+                                fi
+                            fi
+                            continue # Skip to next file after handling metadata
                         fi
                     fi
+                    
+                    # 6.a - Logic for files with NO valid metadata
+                    if [ "$YEAR_FROM_DIR" != "$YEAR_FROM_CREATE" ] || [ "$YEAR_FROM_DIR" != "$YEAR_FROM_MODIFY" ]; then
+                        log_msg "No metadata found. Updating file year for $FILE to $YEAR_FROM_DIR"
+                        MONTH_DAY_CREATE=$(date -d "$CREATE_DATE" +%m%d)
+                        touch -t "${YEAR_FROM_DIR}${MONTH_DAY_CREATE}0000" "$FILE"
+                    fi
+
                 done
                 ;;
             [Ss]* )

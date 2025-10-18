@@ -42,8 +42,8 @@ except Exception as e:
 
 # --- Configuration ---
 PIR_PIN = 4  # GPIO pin of the PIR sensor
-HOLDSCRREN_TIMEOUT_S = 1800   # 30 min of inactivity to pause the slideshow
-BLACKSCREEN_TIMEOUT_S = 3600  # 1 hour of inactivity for a black screen
+HOLDSCRREN_TIMEOUT_S = 3600   # 30 min of inactivity to pause the slideshow
+BLACKSCREEN_TIMEOUT_S = 7200  # 1 hour of inactivity for a black screen
 NIGHT_START_HOUR = 0  # 00:00
 NIGHT_END_HOUR = 7    # 07:00
 LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
@@ -124,7 +124,7 @@ def main():
     # --- Load Config ---
     http_port = 9000 # Default port
     try:
-        with open(CONFIG_PATH, 'r') as f:
+        with open(os.path.expanduser(CONFIG_PATH), 'r') as f:
             config = yaml.safe_load(f)
             http_config = config.get('http', {})
             http_port = http_config.get('port', 9000)
@@ -138,6 +138,8 @@ def main():
     last_motion_time = time.monotonic()
     current_state = STATE_ON
     last_motion_state = False
+    night_override = False # True if night mode was interrupted by motion
+    was_night = False      # To detect transition from night to day
     
     print("---PIR Manager Started---")
     set_display_power(True) # Ensure display is on at start
@@ -151,6 +153,12 @@ def main():
                 is_night = NIGHT_START_HOUR <= now.hour < NIGHT_END_HOUR
             else:  # For night periods that cross midnight (e.g., 22:00-6:00)
                 is_night = now.hour >= NIGHT_START_HOUR or now.hour < NIGHT_END_HOUR
+
+            # Reset override when day begins
+            if not is_night and was_night:
+                print("Day time begins. Resetting night override.")
+                night_override = False
+
             motion_detected = GPIO.input(PIR_PIN) == GPIO.HIGH
             inactivity_time = time.monotonic() - last_motion_time
 
@@ -159,6 +167,9 @@ def main():
                 if current_state != STATE_ON:
                     print("Motion detected. Resuming normal operation.")
                     if current_state == STATE_OFF:
+                        if is_night:
+                            print("Motion detected during night. Overriding night mode.")
+                            night_override = True
                         run_command("sudo rfkill unblock wifi")
                         set_display_power(True)
                         set_service(True)
@@ -180,7 +191,7 @@ def main():
                     set_pause_with_retry(False, http_port)
                     last_motion_time = time.monotonic()
                     current_state = STATE_ON
-                elif is_night:
+                elif is_night and not night_override:
                     if current_state != STATE_OFF:
                         print("Night time. Entering OFF mode.")
                         set_service(False)
@@ -197,6 +208,7 @@ def main():
                         set_pause_with_retry(True, http_port)
                         current_state = STATE_HOLD
             
+            was_night = is_night
             last_motion_state = motion_detected
             time.sleep(LOOP_SLEEP_S)
 
