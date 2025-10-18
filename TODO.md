@@ -11,6 +11,9 @@
 - Diese Datei.  
 - Enthält eine fortlaufend aktualisierte Funktionsbeschreibung aller geänderten oder hinzugefügten Dateien.
 
+## TASKS.md
+- Enthält eine detaillierte, technische Beschreibung der implementierten Änderungen und Lösungen, gruppiert nach Datum.
+
 ## src/picframe/model.py
 - Erweiterung der Kernlogik von picframe.
 - **`group_by_dir: True`**  
