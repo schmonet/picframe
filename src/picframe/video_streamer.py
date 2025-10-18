@@ -39,14 +39,13 @@ VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.flv', '.mov', '.avi', '.webm', '.hevc']
 
 _image_file_lock = threading.Lock()
 
-
-def get_video_info(video_path: str) -> VideoMetadata:
+def get_video_info(video_path: str, ffprobe_path: Optional[str] = None) -> VideoMetadata:
     """Retrieves metadata about the video file using FFprobe."""
     logger = logging.getLogger("get_video_info")
     start_time = time.time()
     try:
         cmd = [
-            "ffprobe", "-v", "error",
+            ffprobe_path if ffprobe_path else "ffprobe", "-v", "error",
             "-select_streams", "v:0",
             "-show_entries", "stream=width,height,duration,sample_aspect_ratio",
             "-show_entries", "stream_side_data=rotation",
@@ -205,7 +204,10 @@ def get_video_info(video_path: str) -> VideoMetadata:
         return metadata
     except (subprocess.CalledProcessError, KeyError, ValueError, IndexError, TypeError) as e:
         elapsed = time.time() - start_time
-        logger.warning("Failed to retrieve video metadata in %.3f seconds: %s", elapsed, e)
+        err_msg = f"Failed to retrieve video metadata for '{video_path}' in {elapsed:.3f} seconds: {e}"
+        if isinstance(e, subprocess.CalledProcessError):
+            err_msg += f" -- stderr: {e.stderr.strip()}"
+        logger.warning(err_msg)
         return VideoMetadata(0, 0, "1:1", 0.0, 0)
 
 
@@ -327,7 +329,7 @@ class VideoFrameExtractor:
         Returns:
         --------
         Optional[np.ndarray]
-            The video frame as a NumPy array, or None if retrieval fails.
+            The video frame as a NumPy array, or none if retrieval fails.
         """
         try:
             # Build ffmpeg command
@@ -396,7 +398,7 @@ class VideoFrameExtractor:
         # If not available, extract and save them
         metadata = get_video_info(self.video_path)
         if metadata.width == 0 or metadata.height == 0:
-            self.logger.error("Error: Invalid video dimensions.")
+            self.logger.warning("Invalid video dimensions for '%s'. Skipping file.", self.video_path)
             return None
         if metadata.duration == 0:
             self.logger.error("Error: Invalid video duration.")

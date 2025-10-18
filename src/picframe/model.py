@@ -88,6 +88,7 @@ DEFAULT_CONFIG = {
         'tags_filter': '',
         'delete_after_show': False,
         'group_by_dir': False, # New option
+        'ffprobe_path': None,
     },
     'mqtt': {
         'use_mqtt': False,  # Set tue true, to enable mqtt
@@ -205,7 +206,8 @@ class Model:
                                                     os.path.expanduser(model_config['db_file']),
                                                     self.__geo_reverse,
                                                     model_config['update_interval'],
-                                                    model_config['portrait_pairs'])
+                                                    model_config['portrait_pairs'],
+                                                    model_config['ffprobe_path'])
         self.__deleted_pictures = model_config['deleted_pictures']
         self.__no_files_img = os.path.expanduser(model_config['no_files_img'])
         self.__sort_cols = model_config['sort_cols']

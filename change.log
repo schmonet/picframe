@@ -1,3 +1,11 @@
+2025-10-10
+- Enhanced `scripts/check_pic_dates.sh` to support video files (`mkv`, `mp4`, etc.).
+- The script now reads creation date metadata from video containers using `exiftool`, in addition to image EXIF data.
+- Refactored `scripts/sync_photos.sh` to support separate storage quotas for photos and videos within a single cache.
+- Introduced a unified cache directory in `scripts/sync_config.yaml` to ensure compatibility with `picframe`.
+- The sync script now calculates storage usage per media type to enforce quotas.
+- Removed all automatic cache cleanup logic from the sync script to allow the cache to be filled continuously.
+
 2025-09-30:
 - Corrected aspect ratio calculation in `viewer_display.py` to prevent horizontal stretching of portrait images.
 - Replaced incorrect aspect ratio logic in `viewer_display.py`.
@@ -30,3 +38,17 @@
 - Added an 'A' (All) option to `check_pic_dates.sh` to process all directories without further prompts.
 - Fixed a syntax error (`;&&`) in `check_pic_dates.sh`.
 - Fixed a corrupted `while` loop in `check_pic_dates.sh` that caused a syntax error.
+
+2025-10-14
+- Modified `scripts/pir_manager.py` to start `picframe` immediately if motion is detected during the night-off period.
+- This overrides the night schedule for the current cycle, preventing the system from turning off again until the next night.
+- Added a `night_override` flag to manage this state.
+- Fixed a bug where the '~' in `CONFIG_PATH` was not expanded, by using `os.path.expanduser()`.
+
+2025-10-18
+- Added `scripts/create_test_images.sh` to generate test images by converting PNGs to JPGs.
+- The script overlays image metadata (dimensions, color space) onto the image and adds randomized EXIF data.
+- Iteratively debugged the script to handle shell syntax errors and system locale differences for number formatting.
+- Enhanced the script to differentiate between portrait and landscape images, adjusting text size and position accordingly.
+- Modified the text overlay to use a bold font for better readability.
+- Finalized `scripts/create_test_images.sh` by adjusting text position and style for portrait images, including larger text and a refined outline for better visibility.

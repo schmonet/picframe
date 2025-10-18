@@ -48,8 +48,9 @@
         - Wenn `kenburns_scroll_direction: random` für jedes Bild zufällig, `scroll: top down` oder `scroll: bottom up`, vertikales Scrolling startet und endet mit zufälligem Offset ≤ `kenburns_portrait_border_pct`
         - Wenn `kenburns_scroll_direction: up, down` für jedes Bild gleich, entsprechend `scroll: down = top down` oder `scroll: up = bottom up`, vertikales Scrolling startet und endet mit zufälligem Offset ≤ `kenburns_portrait_border_pct`
 
-## scripts/
+## scripts/pir_manager.py
 - Steuert Slideshow und Display basierend auf Bewegungserkennung und Zeitplan.
+- **Neu:** Wenn während der Nachtschaltung eine Bewegung erkannt wird, wird der Picframe-Dienst sofort gestartet und die Nachtschaltung für den Rest des Zyklus ausgesetzt.
 - **Korrekturen & Änderungen:**
   - `HOLD`-Zustand über HTTP-Aufruf an den picframe-Webserver (ohne MQTT-Broker).  
   - `BLACK`-Zustand schaltet Bildschirm über `cec-client` ab.  
@@ -57,11 +58,12 @@
   - HTTP-Port wird aus `configuration.yaml` gelesen.  
   - Timer-Fehler durch NTP-Zeitsprünge behoben (`time.monotonic()` statt `time.time()`).  
   - Stabilerer Start durch Wiederholungslogik beim HTTP-Aufruf.  
+  - Pfadauflösung für Konfigurationsdatei korrigiert (`os.path.expanduser`).
 - **Logik:**
   - Prüft alle 15 Minuten den PIR-Sensor.  
   - `HOLD`: Pausiert Slideshow nach 30 Minuten ohne Bewegung.  
   - `BLACK`: Bildschirm aus nach 1 Stunde ohne Bewegung.  
-  - `OFF`: Nachtschaltung (00:00–06:00), beendet Dienst und schaltet Display ab.  
+  - `OFF`: Nachtschaltung (00:00–07:00), beendet Dienst und schaltet Display ab (kann durch Bewegung unterbrochen werden).  
   - Startet Dienst und Display bei Bewegung oder am Morgen automatisch.
 
 ## picframe_scripts/sync_photos.sh
@@ -116,3 +118,24 @@
   - **Keine EXIF-Daten vorhanden:**
     - Passt das Jahr des Dateidatums an das Verzeichnisjahr an.
   - Protokolliert alle Aktionen in einer Log-Datei (`check_pic_dates.log`).
+- **DONE:** Extended file support to include video formats (mkv, mp4, mov, avi).
+- **DONE:** Implemented metadata extraction for video files to read their creation date.
+
+### scripts/sync_photos.sh
+- **DONE:** Implement separate storage quotas for photos and videos.
+- **DONE:** Use a single, unified cache directory for all media to ensure compatibility with picframe.
+- **DONE:** Prioritize photo synchronization over video synchronization based on quota usage.
+- **DONE:** Calculate media-specific storage usage to enforce quotas.
+- **DONE:** Ensure `shown_albums.log` works for both photo and video albums by using a unified cache.
+- **DONE:** Remove all automatic cache and log file cleanup logic.
+
+### scripts/sync_config.yaml
+- **DONE:** Restructure configuration for a unified cache and separate media quotas.
+
+## scripts/create_test_images.sh
+- **Neu:** Shell-Skript zur Erstellung von Testbildern für die Diashow.
+- **Funktionen:**
+  - Konvertiert alle PNG-Dateien im aktuellen Verzeichnis in das JPG-Format.
+  - Liest Metadaten (Breite, Höhe, Farbraum, Bittiefe) aus den PNG-Dateien mittels `mediainfo`.
+  - Brennt diese Metadaten als Text-Overlay direkt in das JPG-Bild ein. Die Position und Größe des Textes wird für Hoch- und Querformatbilder optimiert.
+  - Fügt jedem JPG-Bild zufällige, aber realistische EXIF-Daten hinzu, einschließlich Geokoordinaten von bekannten Hauptstädten, um eine vielfältige Testdatenbank zu simulieren.

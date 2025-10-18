@@ -32,6 +32,9 @@ class GeoReverse:
             else:
                 adr_list = adr.values()
             return ", ".join(adr_list)
-        except Exception as e:  # TODO return different thing for different exceptions
-            self.__logger.error("lat=%f, lon=%f -> %s", lat, lon, e)
+        except urllib.error.URLError as e:
+            self.__logger.error("Network error when trying to reverse geocode lat=%f, lon=%f: %s", lat, lon, e)
+            return ""
+        except Exception as e:
+            self.__logger.error("An unexpected error occurred when trying to reverse geocode lat=%f, lon=%f: %s", lat, lon, e)
             return ""
