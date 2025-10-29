@@ -53,6 +53,13 @@
 - Modified the text overlay to use a bold font for better readability.
 - Finalized `scripts/create_test_images.sh` by adjusting text position and style for portrait images, including larger text and a refined outline for better visibility.
 
-2025-10-18
-- Committed a large set of changes including documentation updates, new scripts, and a complete refresh of the test media in `test/images` and `test/videos`.
-- Updated `README.md`, `TASKS.md`, and `TODO.md` to reflect the latest changes.
+2025-10-28
+- Modified install.sh to copy 99-fb-blank.rules and reload udev rules.
+- Modified viewer_display.py to handle video playback by restarting the application.
+- Created viewer_process.py to display a single image.
+- Simplified controller.py by moving video logic to viewer_display.py.
+- Refactored video_player.py to use a direct shell command for VLC.
+- Updated video_streamer.py to manage the new video_player.py subprocess.
+- Enhanced test_image_video_player.py to blank the screen during transitions.
+- Created test_show_image.py for the image/video player test.
+- Updated test_video_player.py to align with the latest video playback mechanism.

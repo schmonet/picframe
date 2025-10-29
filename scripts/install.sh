@@ -2,7 +2,7 @@
 
 # ========================================================================================
 #
-# Picframe Installation Script
+# Picframe Installation Script (Safe Version - No Git Pull)
 #
 # This script automates the setup of the Picframe application and its custom
 # modifications on a Raspberry Pi. It handles system dependencies, Python environment,
@@ -13,22 +13,30 @@
 #
 # ========================================================================================
 
-# --- install.sh (v15, "Modell C" - Python-Managed Deletion) ---
+# --- install.sh (v19, "Modell G" - Final Syntax Fix)
 
 set -e
 
-# --- CONFIGURATION ---
-USER_HOME="~/"
-PROJECT_DIR="$USER_HOME/picframe"
-SCRIPT_DIR="$PROJECT_DIR/scripts"
-DATA_DIR="$USER_HOME/picframe/data"
-CACHE_DIR="$USER_HOME/picframe/cache"
-LIVE_DIR="$USER_HOME/picframe/live"
-VENV_DIR="$PROJECT_DIR/venv"
-
 # --- SCRIPT LOGIC ---
 
-echo "Starting Picframe Final Setup for user 'schmali' (Python-Managed Deletion)..."
+echo "Starting Picframe Final Setup (Safe Mode - No Git Pull)..."
+
+# Safety check: Do not run as root
+if [ "$EUID" -eq 0 ]; then
+  echo "ERROR: Please run this script as your normal user (e.g., 'schmali'), not as root or with sudo."
+  echo "The script will ask for your sudo password when it needs elevated permissions."
+  exit 1
+fi
+
+# --- CONFIGURATION ---
+# Reliably define directories using $HOME, which points to the current user's home directory.
+PROJECT_DIR="$HOME/picframe"
+SCRIPT_DIR="$PROJECT_DIR/scripts"
+DATA_DIR="$PROJECT_DIR/data"
+CACHE_DIR="$PROJECT_DIR/cache"
+LIVE_DIR="$PROJECT_DIR/live"
+VENV_DIR="$PROJECT_DIR/venv"
+
 
 # 1. Install system dependencies
 echo "[1/9] Installing system dependencies..."
@@ -41,8 +49,8 @@ sudo raspi-config nonint do_change_locale de_DE.UTF-8
 
 # 3. Clone or update the repository
 if [ -d "$PROJECT_DIR" ]; then
-    echo "[3/9] Project directory exists. Pulling latest changes..."
-    cd "$PROJECT_DIR" && git pull && cd -
+    echo "[3/9] Project directory exists. Skipping git pull to preserve local changes."
+    # The 'git pull' command is intentionally disabled in this version.
 else
     echo "[3/9] Cloning picframe repository..."
     git clone "https://github.com/helgeerbe/picframe.git" "$PROJECT_DIR"
@@ -56,10 +64,10 @@ pip install --upgrade pip
 pip install RPi.GPIO Pillow defusedxml pi3d PyYAML paho-mqtt IPTCInfo3 numpy ninepatch pi_heif python-vlc
 deactivate
 
-# 5. Install the picframe package
-echo "[5/9] Installing picframe in editable mode..."
+# 5. Install the picframe package with testing extras
+echo "[5/9] Installing picframe in editable mode with testing extras..."
 source "$VENV_DIR/bin/activate"
-pip install -e "$PROJECT_DIR"
+pip install -e "$PROJECT_DIR[test]"
 deactivate
 
 # 6. Create external directories and static config
@@ -67,33 +75,35 @@ echo "[6/9] Creating external directories and static config..."
 mkdir -p "$DATA_DIR/data" "$DATA_DIR/config" "$CACHE_DIR"
 CONFIG_FILE_PATH="$DATA_DIR/config/configuration.yaml"
 
-# Create static configuration for Picframe
-# Removed as per user request to avoid overwriting existing configuration.yaml
-# Users should manually configure configuration.yaml or copy from configuration_example.yaml
-
 echo "Static configuration file generation skipped. Please ensure $CONFIG_FILE_PATH is correctly configured."
 
 # Always copy fresh data files
 cp -r "$PROJECT_DIR/src/picframe/data/"* "$DATA_DIR/data/"
 
 
-# 7. Overwrite/Create all custom scripts and python modules
-echo "[7/9] Creating/updating all custom scripts and python modules..."
-echo "Skipping script generation as per user request. Please ensure scripts in picframe_scripts and src are up-to-date on the target system."
+# 7. Grant hardware access permissions
+echo "[7/9] Granting user '$USER' hardware access (video, render, input groups)..."
+sudo usermod -a -G video,render,input $USER
+
+echo "Copying udev rule for framebuffer blanking..."
+sudo cp "$PROJECT_DIR/99-fb-blank.rules" /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 
 
 # 8. Create and enable systemd services
-echo "[8/9] Creating and enabling systemd services..."
+echo "[8/9] Creating and enabling systemd services with hardcoded paths..."
 
-# --- picframe.service (for Watcher Architecture) ---
+# --- picframe.service ---
+# Using hardcoded absolute paths to avoid any systemd interpretation issues.
 cat << EOF | sudo tee /etc/systemd/system/picframe.service
 [Unit]
 Description=PicFrame Service (Watcher Architecture)
 After=network.target
 
 [Service]
-WorkingDirectory=$PROJECT_DIR
-ExecStart=$SCRIPT_DIR/watcher.sh
+WorkingDirectory=/home/schmali/picframe
+ExecStart=/home/schmali/picframe/scripts/watcher.sh
 Restart=on-failure
 User=schmali
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
@@ -102,15 +112,15 @@ Environment="XDG_RUNTIME_DIR=/run/user/1000"
 WantedBy=multi-user.target
 EOF
 
-# --- pir_manager.service (remains the same) ---
+# --- pir_manager.service ---
 cat << EOF | sudo tee /etc/systemd/system/pir_manager.service
 [Unit]
 Description=PIR Sensor and Power Manager for PicFrame
 After=network.target
 
 [Service]
-ExecStart=$VENV_DIR/bin/python3 -u $SCRIPT_DIR/pir_manager.py
-WorkingDirectory=$SCRIPT_DIR
+ExecStart=/home/schmali/picframe/venv/bin/python3 -u /home/schmali/picframe/scripts/pir_manager.py
+WorkingDirectory=/home/schmali/picframe/scripts
 Restart=always
 User=schmali
 
@@ -122,7 +132,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable picframe.service
 sudo systemctl enable pir_manager.service
 
-echo "
+# Correctly print multi-line message using a here-document
+cat << "EOF"
+
 Setup for Watcher Architecture complete!
 
 --------------------------------------------------
@@ -130,20 +142,8 @@ Setup for Watcher Architecture complete!
 --------------------------------------------------
 
 1.  REVIEW PICFRAME CONFIG:
-    A static configuration has been generated at:
-    $CONFIG_FILE_PATH
-    Please review it to ensure all settings are correct.
+    Please review your configuration file to ensure all settings are correct.
 
-2.  SET UP CRON JOB:
-    - crontab -e
-    - Add this line:
-
-# Every hour from 6am to 11pm, sync new photos from server to cache
-0 6-23 * * * /bin/bash $SCRIPT_DIR/sync_photos.sh >> /var/log/photo_sync.log 2>&1
-
-
-3.  CREATE SMB CREDENTIALS if you haven't already.
-
-4.  REBOOT THE SYSTEM to apply all changes.
+2.  REBOOT THE SYSTEM to apply all changes, especially group permissions.
 
 EOF

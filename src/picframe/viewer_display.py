@@ -2,6 +2,7 @@ import time
 import subprocess
 import logging
 import os
+import sys
 import random
 from typing import Optional, List, Tuple
 from datetime import datetime
@@ -10,6 +11,7 @@ import numpy as np
 import pi3d  # type: ignore
 from picframe import mat_image, get_image_meta
 from picframe.video_streamer import VideoStreamer, VIDEO_EXTENSIONS, VideoFrameExtractor
+import shlex
 
 # supported display modes for display switch
 dpms_mode = ("unsupported", "pi", "x_dpms")
@@ -53,6 +55,7 @@ class ViewerDisplay:
 
         self.__fps = config['fps']
         self.__background = config['background']
+        self.__solid_background = config['solid_background']
         self.__blend_type = {"blend": 0.0, "burn": 1.0, "bump": 2.0}[config['blend_type']]
         self.__font_file = os.path.expanduser(config['font_file'])
         self.__shader = os.path.expanduser(config['shader'])
@@ -102,6 +105,7 @@ class ViewerDisplay:
         self.__delta_alpha = 1.0
         self.__display = None
         self.__slide = None
+        self.__background_sprite = None
         self.__flat_shader = None
         self.__textblocks = [None, None]
         self.__text_bkg = None
@@ -128,6 +132,29 @@ class ViewerDisplay:
         self.__video_streamer = None
         self.__kmsblank_proc = None
         ImageFile.LOAD_TRUNCATED_IMAGES = True  # occasional damaged file hangs app
+
+        # Framebuffer settings for black screen
+        self.__fb_width = 1920 # TODO: read from config or detect
+        self.__fb_height = 1080
+        self.__fb_bpp = 16 # bits_per_pixel
+        self.__fb_bytes = int(self.__fb_width * self.__fb_height * (self.__fb_bpp / 8))
+
+    def _show_black_screen(self):
+        self.__logger.info("--- Showing Black Screen via dd ---")
+        command = ["dd", "if=/dev/zero", f"of=/dev/fb0", f"bs={self.__fb_bytes}", "count=1"]
+        try:
+            subprocess.run(command, check=True, capture_output=True)
+        except Exception as e:
+            self.__logger.warning(f"Could not blank screen with dd: {e}")
+
+    def _play_video_subprocess(self, video_path):
+        self.__logger.info("--- Starting Video Playback via Subprocess ---")
+        command = ["cvlc", "--fullscreen", "--no-video-title-show", video_path, "vlc://quit"]
+        try:
+            subprocess.run(command, check=True, timeout=3600) # Long timeout for videos
+        except Exception as e:
+            self.__logger.error(f"An error occurred during video playback: {e}")
+
 
     @property
     def display_is_on(self):
@@ -513,7 +540,7 @@ class ViewerDisplay:
             x=self.__display_x, y=self.__display_y,
             w=self.__display_w, h=self.__display_h, frames_per_second=self.__fps,
             display_config=pi3d.DISPLAY_CONFIG_HIDE_CURSOR | pi3d.DISPLAY_CONFIG_NO_FRAME,
-            background=self.__background, use_glx=self.__use_glx,
+            background=self.__solid_background, use_glx=self.__use_glx,
             use_sdl2=self.__use_sdl2)
         camera = pi3d.Camera(is_3d=False)
         shader = pi3d.Shader(self.__shader)
@@ -534,40 +561,20 @@ class ViewerDisplay:
                                           h=bkg_hgt, y=-int(self.__display.height) // 2 + bkg_hgt // 2, z=4.0)
             self.__text_bkg.set_draw_details(self.__flat_shader, [text_bkg_tex])
 
-    def __load_video_frames(self, video_path: str) -> Optional[tuple[pi3d.Texture, pi3d.Texture]]:
-        try:
-            self.__logger.debug("Loading video frames: %s", video_path)
-            extractor = VideoFrameExtractor(
-                video_path, self.__display.width, self.__display.height, fit_display=self.__video_fit_display
-            )
-            frames = extractor.get_first_and_last_frames()
-            if frames is not None:
-                frame_first, frame_last = frames
-                first_frame_tex = pi3d.Texture(frame_first, blend=True, m_repeat=False, free_after_load=True)
-                last_frame_tex = pi3d.Texture(frame_last, blend=True, m_repeat=False, free_after_load=True)
-                return first_frame_tex, last_frame_tex
-            else:
-                self.__logger.warning("Failed to retrieve frames from video: %s", video_path)
-                return None
-        except Exception as e:
-            self.__logger.warning("Can't create video textures from file: %s", video_path)
-            self.__logger.warning("Cause: %s", e)
-            return None
+
 
     def slideshow_is_running(self, pics: Optional[List[Optional[get_image_meta.GetImageMeta]]] = None,
                              time_delay: float = 200.0, fade_time: float = 10.0,
                              paused: bool = False) -> Tuple[bool, bool, bool]:
-        loop_running = self.__display.loop_running()
-        video_playing = False
         if self.is_video_playing():
             self.pause_video(paused)
-            video_playing = True
-            if self.__last_frame_tex is not None:
-                self.__sfg = self.__last_frame_tex
-                self.__last_frame_tex = None
-                self.__slide.set_textures([self.__sfg, self.__sbg])
-            self.__slide.draw()
-            return (loop_running, False, video_playing)
+            time.sleep(1.0 / self.__fps)  # main loop is not running so need to sleep
+            return (True, False, True)
+
+        loop_running = self.__display.loop_running()
+        if self.__background_sprite:
+            self.__background_sprite.draw()
+        video_playing = False
 
         tm = time.time()
         if pics is not None:
@@ -575,12 +582,15 @@ class ViewerDisplay:
                 self.__kb_previous_state = self.__kb_current_state.copy()
 
             self.stop_video()
-            if pics[0] and os.path.splitext(pics[0].fname)[1].lower() in VIDEO_EXTENSIONS:
+            is_video = pics[0] and os.path.splitext(pics[0].fname)[1].lower() in VIDEO_EXTENSIONS
+            if is_video:
                 self.__video_path = pics[0].fname
-                textures = self.__load_video_frames(self.__video_path)
-                new_sfg = textures[0] if textures else None
-                self.__last_frame_tex = textures[1] if textures else None
+                # Create a black texture for the transition
+                black_array = np.zeros((self.__display.height, self.__display.width, 3), dtype=np.uint8)
+                new_sfg = pi3d.Texture(black_array, blend=True, m_repeat=False, free_after_load=True)
+                self.__last_frame_tex = None
             else:
+                self.__video_path = None
                 new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
 
             if new_sfg is None:
@@ -592,7 +602,10 @@ class ViewerDisplay:
             self.__sbg = self.__sfg
             self.__sfg = new_sfg
             self.__alpha = 0.0
-            self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
+            if is_video:
+                self.__delta_alpha = 1.0  # force instant transition for video
+            else:
+                self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
 
             if self.__show_text_tm > 0.0:
                 for i, pic in enumerate(pics):
@@ -606,8 +619,16 @@ class ViewerDisplay:
             self.__slide.set_textures([self.__sfg, self.__sbg])
             
             if self.__kenburns:
-                self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
-                self.__kb_current_state['start_time'] = tm # Set start time for the new animation
+                if is_video:
+                    self.__kb_current_state = {} # Reset Ken Burns state for videos
+                    # Also reset the transform on the sprite to avoid carrying over from the previous slide
+                    self.__slide.unif[42] = 1.0  # scale_x
+                    self.__slide.unif[43] = 1.0  # scale_y
+                    self.__slide.unif[48] = 0.0  # offset_x
+                    self.__slide.unif[49] = 0.0  # offset_y
+                else:
+                    self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
+                    self.__kb_current_state['start_time'] = tm # Set start time for the new animation
                 self.__apply_kenburns_transform(self.__kb_current_state, 0.0, is_background=False)
 
         if self.__alpha < 1.0:
@@ -629,16 +650,20 @@ class ViewerDisplay:
 
         self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha)
 
+        self.__logger.debug(f"alpha={self.__alpha:.2f}, next_tm-tm={(self.__next_tm - tm):.2f}, fade_time={fade_time:.2f}")
         if (self.__next_tm - tm) < fade_time or self.__alpha < 1.0:
             self.__in_transition = True
         else:
             self.__in_transition = False
-            if self.__video_path is not None and tm > self.__name_tm:
+            self.__logger.info("Transition finished. Video path: %s", self.__video_path)
+            if self.__video_path is not None:
                 if self.__video_streamer is None or not self.__video_streamer.player_alive():
+                    self.__logger.info("Creating new VideoStreamer for %s", self.__video_path)
                     self.__video_streamer = VideoStreamer(
                         self.__display_x, self.__display_y, self.__display.width, self.__display.height,
                         self.__video_path, fit_display=self.__video_fit_display)
                 else:
+                    self.__logger.info("Re-using existing VideoStreamer for %s", self.__video_path)
                     self.__video_streamer.play(self.__video_path)
                 self.__video_path = None
 
@@ -817,3 +842,43 @@ class ViewerDisplay:
         if self.__video_streamer is not None:
             self.__video_streamer.kill()
         self.__display.destroy()
+
+    def show_one_image_and_exit(self, pic, duration):
+        """Creates a display, shows a single image for a duration, and then exits."""
+        self.__logger.info(f"Displaying single image {pic.fname} for {duration}s")
+        self.slideshow_start() # Creates display, shaders, etc.
+
+        tex = self.__tex_load([pic, None], size=(self.__display.width, self.__display.height))
+        if tex is None:
+            self.__logger.error("Failed to load texture for single image display.")
+            self.slideshow_stop()
+            return
+
+        # Set texture and reset alpha for a static display (no transition)
+        self.__slide.set_textures([tex, tex])
+        self.__slide.unif[44] = 1.0 # alpha = 1.0
+
+        start_time = time.time()
+        while self.__display.loop_running() and (time.time() - start_time < duration):
+            self.__slide.draw()
+            # Minimal sleep to keep CPU usage reasonable
+            time.sleep(0.01)
+        
+        self.slideshow_stop() # Destroys display
+
+
+    def play_video_blocking(self, video_path: str):
+        self.__logger.info("Video file detected. Handing off to external player and restarting.")
+
+        # 1. Stop pi3d cleanly
+        self.slideshow_stop()
+
+        # 2. Blank the screen
+        self._show_black_screen()
+
+        # 3. Play the video (blocking)
+        self._play_video_subprocess(video_path)
+
+        # 4. Restart the entire application
+        self.__logger.info("Video finished. Restarting picframe...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)

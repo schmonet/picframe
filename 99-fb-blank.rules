@@ -1,0 +1,1 @@
+KERNEL=="fb0", SUBSYSTEM=="graphics", ACTION=="add", RUN+="/bin/chgrp video /sys/class/graphics/fb0/blank", RUN+="/bin/chmod 664 /sys/class/graphics/fb0/blank"
