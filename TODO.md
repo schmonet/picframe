@@ -11,9 +11,6 @@
 - Diese Datei.  
 - Enthält eine fortlaufend aktualisierte Funktionsbeschreibung aller geänderten oder hinzugefügten Dateien.
 
-## TASKS.md
-- Enthält eine detaillierte, technische Beschreibung der implementierten Änderungen und Lösungen, gruppiert nach Datum.
-
 ## src/picframe/model.py
 - Erweiterung der Kernlogik von picframe.
 - **`group_by_dir: True`**  
@@ -142,3 +139,21 @@
   - Liest Metadaten (Breite, Höhe, Farbraum, Bittiefe) aus den PNG-Dateien mittels `mediainfo`.
   - Brennt diese Metadaten als Text-Overlay direkt in das JPG-Bild ein. Die Position und Größe des Textes wird für Hoch- und Querformatbilder optimiert.
   - Fügt jedem JPG-Bild zufällige, aber realistische EXIF-Daten hinzu, einschließlich Geokoordinaten von bekannten Hauptstädten, um eine vielfältige Testdatenbank zu simulieren.
+
+- viewer_display.py:
+  - Added play_video_blocking to manage the entire video playback lifecycle.
+  - Added _show_black_screen and _play_video_subprocess helper methods.
+- viewer_process.py:
+  - New file to display a single image and then exit.
+- controller.py:
+  - Simplified the main loop, delegating video playback to viewer_display.
+- video_player.py:
+  - Switched from python-vlc to a direct subprocess call to cvlc.
+- video_streamer.py:
+  - Adapted to manage the video_player.py script as a separate process.
+- test/test_image_video_player.py:
+  - Implemented screen blanking using 'dd' to hide console transitions.
+- test/test_show_image.py:
+  - New script to facilitate testing of single image display.
+- test/test_video_player.py:
+  - Updated tests to match the new subprocess-based video playback architecture.

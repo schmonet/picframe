@@ -14,7 +14,8 @@ DEFAULT_CONFIG = {
         'blur_edges': False,
         'edge_alpha': 0.5,
         'fps': 20.0,
-        'background': [0.2, 0.2, 0.3, 1.0],
+        'background': [0.0, 0.0, 0.0, 0.0],
+        'solid_background': [0.2, 0.2, 0.3, 1.0],
         'blend_type': "blend",  # {"blend":0.0, "burn":1.0, "bump":2.0}
         'font_file': '~/picframe_data/data/fonts/NotoSans-Regular.ttf',
         'shader': '~/picframe_data/data/shaders/blend_new',
@@ -403,12 +404,12 @@ class Model:
                     self.__get_files() # This queries the DB
                     missing_images = 0
                     if self.__number_of_files > 0:
-                        self.__logger.info("Reload successful, found %%d files.", self.__number_of_files)
+                        self.__logger.info("Reload successful, found %d files.", self.__number_of_files)
                         break
                     self.__logger.info("Reload attempt found no files. Retrying...")
                     time.sleep(1) # Wait 1 second before retrying
                 else: # This 'else' belongs to the 'while' loop, executed if the loop finishes without break
-                    self.__logger.warning("Failed to reload file list after %%d seconds. No files found.", max_wait_time)
+                    self.__logger.warning("Failed to reload file list after %d seconds. No files found.", max_wait_time)
 
             # If we don't have any files to show, prepare the "no images" image
             # Also, set the reload_files flag so we'll check for new files on the next pass...
