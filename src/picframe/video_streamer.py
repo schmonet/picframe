@@ -35,7 +35,7 @@ from PIL import Image
 
 from .video_metadata import VideoMetadata
 
-VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.flv', '.mov', '.avi', '.webm', '.hevc']
+VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.flv', '.mov', '.avi', '.webm', '.hevc', '.mts', '.ts', '.mpeg']
 
 _image_file_lock = threading.Lock()
 
@@ -48,14 +48,13 @@ def get_video_info(video_path: str, ffprobe_path: Optional[str] = None) -> Video
             ffprobe_path if ffprobe_path else "ffprobe", "-v", "error",
             "-select_streams", "v:0",
             "-show_entries", "stream=width,height,duration,sample_aspect_ratio",
-            "-show_entries", "stream_side_data=rotation",
             "-show_entries", "format=duration",
             "-show_entries", "format_tags=title,description,comment,caption,creation_time,location",
             "-show_entries", "format_tags=location-eng,com.apple.quicktime.location.ISO6709",
             "-show_entries", "format_tags=com.apple.quicktime.make,com.apple.quicktime.model",
             "-show_entries", "format_tags=com.android.version",
             # Add more show_entries if needed for extra fields
-            "-show_entries", "stream_tags=make,model,lens,iso_speed,exposure_time,f_number,focal_length,rating",
+            "-show_entries", "stream_tags=rotate,make,model,lens,iso_speed,exposure_time,focal_length,rating",
             "-of", "json",
             video_path
         ]
@@ -70,10 +69,12 @@ def get_video_info(video_path: str, ffprobe_path: Optional[str] = None) -> Video
 
         # Get rotation
         rotation = 0
-        for item in stream.get("side_data_list", []):
-            if "rotation" in item:
-                rotation = int(item["rotation"])
-                break
+        stream_tags = stream.get("tags", {})
+        if "rotate" in stream_tags:
+            try:
+                rotation = int(stream_tags["rotate"])
+            except (ValueError, TypeError):
+                logger.warning("Could not parse rotation value: %s", stream_tags["rotate"])
 
         # Get metadata from format
         format_sec = info.get("format", {})
@@ -89,7 +90,6 @@ def get_video_info(video_path: str, ffprobe_path: Optional[str] = None) -> Video
 
         # Get metadata from format tags
         tags = format_sec.get("tags", {})
-        stream_tags = stream.get("tags", {})
 
         # Extract metadata fields
         title = tags.get("title")
@@ -499,14 +499,23 @@ class VideoStreamer:
         ]
         if fit_display:
             cmd.append("--fit_display")
+        self.__logger.debug("Starting video player with command: %s", " ".join(cmd))
+
+        penv = os.environ.copy()
+        if sys.platform.startswith("linux"):
+            if "DISPLAY" not in penv:  # good indication of no X-server
+                penv["SDL_VIDEODRIVER"] = "kmsdrm"
+        
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True,
+            env=penv
         )
+        self.__logger.info("Started video_player.py process with PID: %d", self._proc.pid)
         self._proc_stdin = self._proc.stdin
         self._proc_stdout = self._proc.stdout
         self._proc_stderr = self._proc.stderr
@@ -515,12 +524,18 @@ class VideoStreamer:
         self._state_thread = threading.Thread(target=self._listen_state, daemon=True)
         self._state_thread.start()
 
-        # Start a thread to listen for stderr output from the player
-        self._stderr_thread = threading.Thread(target=self._listen_stderr, daemon=True)
+        # Start a thread to log stderr from the player
+        self._stderr_thread = threading.Thread(target=self._log_stderr, daemon=True)
         self._stderr_thread.start()
 
         if video_path is not None:
             self.play(video_path)
+
+    def _log_stderr(self):
+        if not self._proc_stderr:
+            return
+        for line in self._proc_stderr:
+            self.__logger.warning("[video_player]: %s", line.strip())
 
     def player_alive(self) -> bool:
         """
@@ -558,12 +573,6 @@ class VideoStreamer:
                 self._is_playing = True
             elif line == "STATE:ENDED":
                 self._is_playing = False
-
-    def _listen_stderr(self):
-        if not self._proc_stderr:
-            return
-        for line in self._proc_stderr:
-            self.__logger.debug("[player] %s", line.strip())
 
     def play(self, video_path: Optional[str]) -> None:
         """
