@@ -10,7 +10,8 @@ from PIL import Image, ImageFilter, ImageFile
 import numpy as np
 import pi3d  # type: ignore
 from picframe import mat_image, get_image_meta
-from picframe.video_streamer import VideoStreamer, VIDEO_EXTENSIONS, VideoFrameExtractor
+from picframe.controller import VIDEO_EXTENSIONS
+
 import shlex
 
 # supported display modes for display switch
@@ -112,6 +113,7 @@ class ViewerDisplay:
         self.__sfg = None  # slide for background
         self.__sbg = None  # slide for foreground
         self.__last_frame_tex = None  # slide for last frame of video
+        self.__skip_draw = False # Flag to skip the next draw call
         self.__video_path = None  # path to video file
         self.__next_tm = 0.0
         self.__name_tm = 0.0
@@ -129,7 +131,6 @@ class ViewerDisplay:
         self.__clock_hgt_offset_pct = config['clock_hgt_offset_pct']
         self.__image_overlay = None
         self.__prev_overlay_time = None
-        self.__video_streamer = None
         self.__kmsblank_proc = None
         ImageFile.LOAD_TRUNCATED_IMAGES = True  # occasional damaged file hangs app
 
@@ -149,7 +150,7 @@ class ViewerDisplay:
 
     def _play_video_subprocess(self, video_path):
         self.__logger.info("--- Starting Video Playback via Subprocess ---")
-        command = ["cvlc", "--fullscreen", "--no-video-title-show", video_path, "vlc://quit"]
+        command = ["mpv", "--fullscreen", "--no-osc", video_path]
         try:
             subprocess.run(command, check=True, timeout=3600) # Long timeout for videos
         except Exception as e:
@@ -361,9 +362,12 @@ class ViewerDisplay:
             if pics[0]:
                 im = get_image_meta.GetImageMeta.get_image_object(pics[0].fname)
                 if im is None:
+                    self.__logger.warning("Failed to load image object for %s", pics[0].fname)
                     return None
+                self.__logger.debug("Image loaded: %s, size: %s, mode: %s", pics[0].fname, im.size, im.mode)
                 if pics[0].orientation != 1:
                     im = self.__orientate_image(im, pics[0])
+                    self.__logger.debug("Image after orientation: size: %s, mode: %s", im.size, im.mode)
 
             if self.__crop_ar is not None:
                 image_ar = im.width / im.height
@@ -375,24 +379,32 @@ class ViewerDisplay:
                     new_height = im.width / self.__crop_ar
                     top = (im.height - new_height) / 2
                     im = im.crop((0, top, im.width, top + new_height))
+                self.__logger.debug("Image after cropping: size: %s, mode: %s", im.size, im.mode)
 
             if pics[1]:
                 im2 = get_image_meta.GetImageMeta.get_image_object(pics[1].fname)
                 if im2 is None:
+                    self.__logger.warning("Failed to load image object for %s", pics[1].fname)
                     return None
+                self.__logger.debug("Second image loaded: %s, size: %s, mode: %s", pics[1].fname, im2.size, im2.mode)
                 if pics[1].orientation != 1:
                     im2 = self.__orientate_image(im2, pics[1])
+                    self.__logger.debug("Second image after orientation: size: %s, mode: %s", im2.size, im2.mode)
 
             screen_aspect, image_aspect, diff_aspect = self.__get_aspect_diff(size, im.size)
 
             if self.__mat_images and diff_aspect > self.__mat_images_tol:
+                self.__logger.debug("Applying matting to image(s).")
                 if not pics[1]:
                     im = self.__matter.mat_image((im,))
                 else:
                     im = self.__matter.mat_image((im, im2))
+                self.__logger.debug("Image after matting: size: %s, mode: %s", im.size, im.mode)
             else:
                 if pics[1]:
+                    self.__logger.debug("Creating image pair without matting.")
                     im = self.__create_image_pair(im, im2)
+                    self.__logger.debug("Image after pairing: size: %s, mode: %s", im.size, im.mode)
 
             (w, h) = im.size
             screen_aspect, image_aspect, diff_aspect = self.__get_aspect_diff(size, im.size)
@@ -411,10 +423,12 @@ class ViewerDisplay:
                     im_b = im_b.resize(size, resample=Image.BICUBIC)
                     im_b.putalpha(round(255 * self.__edge_alpha))
                     im = im.resize([int(x * sc_f) for x in im.size], resample=Image.BICUBIC)
-                    im_b.paste(im, box=(round(0.5 * (im_b.size[0] - im.size[0])),
+                    im_b.paste(im, box=(round(0.5 * (im_b.size[0] - im.size[0])), 
                                         round(0.5 * (im_b.size[1] - im.size[1]))))
                     im = im_b
-            tex = pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=True)
+                self.__logger.debug("Image after blurring: size: %s, mode: %s", im.size, im.mode)
+            self.__logger.debug("Creating pi3d.Texture from image: size: %s, mode: %s", im.size, im.mode)
+            tex = pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=False)
         except Exception as e:
             self.__logger.warning("Can't create tex from file: \"%s\" or \"%s\"", pics[0].fname, pics[1])
             self.__logger.warning("Cause: %s", e)
@@ -446,6 +460,7 @@ class ViewerDisplay:
             if paused:
                 info_strings.append("PAUSED")
         final_string = " • ".join(info_strings)
+        self.__logger.debug("__make_text: final_string = '%s'", final_string)
 
         block = None
         if len(final_string) > 0:
@@ -458,6 +473,7 @@ class ViewerDisplay:
             block = pi3d.FixedString(self.__font_file, final_string, shadow_radius=3, font_size=self.__show_text_sz,
                                      shader=self.__flat_shader, justify=self.__text_justify, width=c_rng,
                                      color=(255, 255, 255, opacity))
+            self.__logger.debug("__make_text: FixedString created. Sprite size: %s, alpha: %s", (block.sprite.width, block.sprite.height), block.sprite.alpha())
             adj_x = (c_rng - block.sprite.width) // 2
             if self.__text_justify == "L":
                 adj_x *= -1
@@ -476,7 +492,7 @@ class ViewerDisplay:
 
     def __draw_clock(self):
         current_time = datetime.now().strftime(self.__clock_format)
-        if current_time != self.__prev_clock_time:
+        if self.__clock_overlay is None or current_time != self.__prev_clock_time:
             wdt_offset = int(self.__display.width * self.__clock_wdt_offset_pct / 100)
             hgt_offset = int(self.__display.height * self.__clock_hgt_offset_pct / 100)
             width = self.__display.width - (wdt_offset * 2)
@@ -489,6 +505,7 @@ class ViewerDisplay:
             self.__clock_overlay = pi3d.FixedString(self.__font_file, clock_text, font_size=self.__clock_text_sz,
                                                     shader=self.__flat_shader, width=width, shadow_radius=3,
                                                     justify=self.__clock_justify, color=(255, 255, 255, opacity))
+            self.__logger.debug("__draw_clock: FixedString created. Sprite size: %s, alpha: %s", (self.__clock_overlay.sprite.width, self.__clock_overlay.sprite.height), self.__clock_overlay.sprite.alpha())
             self.__clock_overlay.sprite.set_alpha(self.get_brightness())
             x = (width - self.__clock_overlay.sprite.width) // 2
             if self.__clock_justify == "L":
@@ -551,6 +568,9 @@ class ViewerDisplay:
         self.__slide.unif[55] = 1.0  # brightness
         self.__textblocks = [None, None]
         self.__flat_shader = pi3d.Shader("uv_flat")
+        self.__sfg = None # Reset foreground texture after display re-initialization
+        self.__sbg = None # Reset background texture after display re-initialization
+        self.__skip_draw = True # Set flag to skip first draw call after re-initialization
 
         if self.__text_bkg_hgt:
             bkg_hgt = int(min(self.__display.width, self.__display.height) * self.__text_bkg_hgt)
@@ -566,46 +586,40 @@ class ViewerDisplay:
     def slideshow_is_running(self, pics: Optional[List[Optional[get_image_meta.GetImageMeta]]] = None,
                              time_delay: float = 200.0, fade_time: float = 10.0,
                              paused: bool = False) -> Tuple[bool, bool, bool]:
-        if self.is_video_playing():
-            self.pause_video(paused)
-            time.sleep(1.0 / self.__fps)  # main loop is not running so need to sleep
-            return (True, False, True)
+        # This method is now only for displaying images. Video playback is handled
+        # by the controller calling play_video_blocking() directly.
 
         loop_running = self.__display.loop_running()
+        if not loop_running:
+            return (False, False, False)
+
         if self.__background_sprite:
             self.__background_sprite.draw()
-        video_playing = False
 
         tm = time.time()
-        if pics is not None:
+        if pics is not None and pics[0] is not None:
+            # This block only executes when the controller passes a new image
             if self.__kenburns and self.__kb_current_state:
                 self.__kb_previous_state = self.__kb_current_state.copy()
 
-            self.stop_video()
-            is_video = pics[0] and os.path.splitext(pics[0].fname)[1].lower() in VIDEO_EXTENSIONS
-            if is_video:
-                self.__video_path = pics[0].fname
-                # Create a black texture for the transition
-                black_array = np.zeros((self.__display.height, self.__display.width, 3), dtype=np.uint8)
-                new_sfg = pi3d.Texture(black_array, blend=True, m_repeat=False, free_after_load=True)
-                self.__last_frame_tex = None
-            else:
-                self.__video_path = None
-                new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
+            new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
 
             if new_sfg is None:
-                return (self.__display.loop_running(), True, False)
+                return (loop_running, True, False) # Signal to skip this file
 
             tm = time.time()
             self.__next_tm = tm + time_delay
             self.__name_tm = tm + fade_time + self.__show_text_tm
-            self.__sbg = self.__sfg
-            self.__sfg = new_sfg
-            self.__alpha = 0.0
-            if is_video:
-                self.__delta_alpha = 1.0  # force instant transition for video
+            
+            if self.__sfg is None: # After video, sfg is None. Set both textures to the new one.
+                self.__alpha = 1.0 # Set alpha to 1.0 to show foreground immediately
+                self.__sbg = new_sfg
             else:
-                self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
+                self.__alpha = 0.0 # Normal operation, start fade from background
+                self.__sbg = self.__sfg # Normal operation: background is the old foreground
+
+            self.__sfg = new_sfg
+            self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
 
             if self.__show_text_tm > 0.0:
                 for i, pic in enumerate(pics):
@@ -614,23 +628,15 @@ class ViewerDisplay:
                 for block in range(2):
                     self.__textblocks[block] = None
 
-            if self.__sbg is None:
-                self.__sbg = self.__sfg
+            self.__logger.debug("Setting textures: __sfg=%s, __sbg=%s", self.__sfg, self.__sbg)
             self.__slide.set_textures([self.__sfg, self.__sbg])
             
             if self.__kenburns:
-                if is_video:
-                    self.__kb_current_state = {} # Reset Ken Burns state for videos
-                    # Also reset the transform on the sprite to avoid carrying over from the previous slide
-                    self.__slide.unif[42] = 1.0  # scale_x
-                    self.__slide.unif[43] = 1.0  # scale_y
-                    self.__slide.unif[48] = 0.0  # offset_x
-                    self.__slide.unif[49] = 0.0  # offset_y
-                else:
-                    self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
-                    self.__kb_current_state['start_time'] = tm # Set start time for the new animation
+                self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
+                self.__kb_current_state['start_time'] = tm # Set start time for the new animation
                 self.__apply_kenburns_transform(self.__kb_current_state, 0.0, is_background=False)
 
+        # This block handles the fade transition and Ken Burns effect for every frame
         if self.__alpha < 1.0:
             self.__alpha += self.__delta_alpha
             if self.__alpha > 1.0:
@@ -648,24 +654,20 @@ class ViewerDisplay:
             elapsed = tm - self.__kb_current_state.get('start_time', tm)
             self.__apply_kenburns_transform(self.__kb_current_state, elapsed)
 
-        self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha)
+        self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha) # smooth transition
 
         self.__logger.debug(f"alpha={self.__alpha:.2f}, next_tm-tm={(self.__next_tm - tm):.2f}, fade_time={fade_time:.2f}")
         if (self.__next_tm - tm) < fade_time or self.__alpha < 1.0:
             self.__in_transition = True
         else:
             self.__in_transition = False
-            self.__logger.info("Transition finished. Video path: %s", self.__video_path)
-            if self.__video_path is not None:
-                if self.__video_streamer is None or not self.__video_streamer.player_alive():
-                    self.__logger.info("Creating new VideoStreamer for %s", self.__video_path)
-                    self.__video_streamer = VideoStreamer(
-                        self.__display_x, self.__display_y, self.__display.width, self.__display.height,
-                        self.__video_path, fit_display=self.__video_fit_display)
-                else:
-                    self.__logger.info("Re-using existing VideoStreamer for %s", self.__video_path)
-                    self.__video_streamer.play(self.__video_path)
-                self.__video_path = None
+        # Absolute safeguard: Do not attempt to draw if textures are not ready,
+        # which can happen in the first frame after a video or when a new image has just been loaded.
+        # This gives pi3d one full frame to process the new texture.
+        if self.__skip_draw:
+            self.__logger.debug("Safeguard triggered (skip_draw=True), skipping draw call for one frame.")
+            self.__skip_draw = False # Reset the flag for the next frame
+            return (loop_running, False, False)
 
         self.__slide.draw()
         self.__draw_overlay()
@@ -676,8 +678,8 @@ class ViewerDisplay:
             if self.__show_text_tm > 0:
                 dt = 1.0 - (self.__name_tm - tm) / self.__show_text_tm
             else:
-                dt = 1
-            if dt > 0.995: dt = 1
+                dt = 1.0
+            if dt > 0.995: dt = 1.0
             ramp_pt = max(4.0, self.__show_text_tm / 4.0)
             alpha = max(0.0, min(1.0, ramp_pt * (1.0 - abs(1.0 - 2.0 * dt))))
 
@@ -690,7 +692,8 @@ class ViewerDisplay:
 
             for block in self.__textblocks:
                 if block is not None: block.sprite.draw()
-        return (loop_running, False, video_playing)
+        
+        return (loop_running, False, False)
 
     def __calculate_kenburns_transform(self, texture, time_delay):
         state = {'duration': time_delay}
@@ -825,23 +828,12 @@ class ViewerDisplay:
             self.__slide.unif[48] = offset_x_unif
             self.__slide.unif[49] = offset_y_unif
     
-    def stop_video(self):
-        if self.__video_streamer is not None:
-            self.__video_streamer.stop()
-
-    def is_video_playing(self) -> bool:
-        if self.__video_streamer is not None and self.__video_streamer.is_playing():
-            return True
-        return False
-
-    def pause_video(self, do_pause: bool):
-        if self.__video_streamer is not None:
-            self.__video_streamer.pause(do_pause)
-
     def slideshow_stop(self):
-        if self.__video_streamer is not None:
-            self.__video_streamer.kill()
-        self.__display.destroy()
+        if self.__display:
+            self.__display.destroy()
+        self.__clock_overlay = None
+        self.__sfg = None # Ensure foreground texture is reloaded
+        self.__sbg = None # Ensure background texture is reloaded
 
     def show_one_image_and_exit(self, pic, duration):
         """Creates a display, shows a single image for a duration, and then exits."""
@@ -867,18 +859,12 @@ class ViewerDisplay:
         self.slideshow_stop() # Destroys display
 
 
-    def play_video_blocking(self, video_path: str):
-        self.__logger.info("Video file detected. Handing off to external player and restarting.")
+    def play_video(self, video_path: str):
+        self.__logger.info("Video file detected. Handing off to external player.")
 
         # 1. Stop pi3d cleanly
-        self.slideshow_stop()
-
-        # 2. Blank the screen
-        self._show_black_screen()
+        if self.__display:
+            self.slideshow_stop() # This destroys the display
 
         # 3. Play the video (blocking)
         self._play_video_subprocess(video_path)
-
-        # 4. Restart the entire application
-        self.__logger.info("Video finished. Restarting picframe...")
-        os.execv(sys.executable, [sys.executable] + sys.argv)

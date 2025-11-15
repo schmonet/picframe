@@ -4,12 +4,14 @@ import time
 import logging
 import threading
 from picframe import get_image_meta
-from picframe.video_streamer import VIDEO_EXTENSIONS, get_video_info
+from picframe.controller import VIDEO_EXTENSIONS
+
 
 
 class ImageCache:
 
     EXTENSIONS = ['.png', '.jpg', '.jpeg', '.heif', '.heic']
+
     EXIF_TO_FIELD = {'EXIF FNumber': 'f_number',
                      'Image Make': 'make',
                      'Image Model': 'model',
@@ -397,10 +399,10 @@ class ImageCache:
                 continue # Skip to the next directory
             for file in files_in_dir:
                 base, extension = os.path.splitext(file)
-                if (extension.lower() in (ImageCache.EXTENSIONS + VIDEO_EXTENSIONS)
-                        # have to filter out all the Apple junk
-                        and '.AppleDouble' not in dir and not file.startswith('.')
-                        and '.tmp' not in dir and '.tmp' not in file):
+                # have to filter out all the Apple junk
+                if ((extension.lower() in (ImageCache.EXTENSIONS + list(VIDEO_EXTENSIONS))) and
+                        '.AppleDouble' not in dir and not file.startswith('.') and
+                        '.tmp' not in dir and '.tmp' not in file):
                     full_file = os.path.join(dir, file)
                     mod_tm = os.path.getmtime(full_file)
                     found = self.__db.execute(sql_select, (base, extension.lstrip("."), dir, mod_tm)).fetchone()
@@ -421,11 +423,16 @@ class ImageCache:
 
         # Get the file's meta info and build the INSERT statement dynamically
         meta = {}
-        ext = os.path.splitext(file)[1].lower()
-        if ext in VIDEO_EXTENSIONS: # no exif info available
-            meta = self.__get_video_info(file)
-        else:
-            meta = self.__get_exif_info(file)
+        try:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in VIDEO_EXTENSIONS: # no exif info available
+                meta = self.__get_video_info(file)
+            else:
+                meta = self.__get_exif_info(file)
+        except Exception as e:
+            self.__logger.error("Could not get metadata for '%s'. Skipping file. Error: %s", file, e)
+            return # Skip this file and continue with the next one
+
         meta_insert = self.__get_meta_sql_from_dict(meta)
         vals = list(meta.values())
         vals.insert(0, file)
@@ -469,26 +476,21 @@ class ImageCache:
         # remove orphaned records from the 'file' and 'meta' tables
         if len(folder_id_list):
             self.__db_write_lock.acquire()
-            if self.__purge_files:
-                self.__db.executemany('DELETE FROM folder WHERE folder_id = ?', folder_id_list)
-            else:
-                self.__db.executemany('UPDATE folder SET missing = 1 WHERE folder_id = ?', folder_id_list)
+            self.__db.executemany('DELETE FROM folder WHERE folder_id = ?', folder_id_list)
             self.__db_write_lock.release()
 
         # Find files in the db that are no longer on disk
-        if self.__purge_files:
-            file_id_list = []
-            for row in self.__db.execute('SELECT file_id, fname from all_data'):
-                if not os.path.exists(row['fname']):
-                    file_id_list.append([row['file_id']])
+        file_id_list = []
+        for row in self.__db.execute('SELECT file_id, fname from all_data'):
+            if not os.path.exists(row['fname']):
+                file_id_list.append([row['file_id']])
 
-            # Delete any non-existent files from the db. Note, this will automatically
-            # remove matching records from the 'meta' table as well.
-            if len(file_id_list):
-                self.__db_write_lock.acquire()
-                self.__db.executemany('DELETE FROM file WHERE file_id = ?', file_id_list)
-                self.__db_write_lock.release()
-            self.__purge_files = False
+        # Delete any non-existent files from the db. Note, this will automatically
+        # remove matching records from the 'meta' table as well.
+        if len(file_id_list):
+            self.__db_write_lock.acquire()
+            self.__db.executemany('DELETE FROM file WHERE file_id = ?', file_id_list)
+            self.__db_write_lock.release()
 
     def __get_exif_info(self, file_path_name):
         exifs = get_image_meta.GetImageMeta(file_path_name)
@@ -556,40 +558,45 @@ class ImageCache:
             dict: A dictionary containing the meta keys.
             Note, the 'key' must match a field in the 'meta' table
         """
-        meta = get_video_info(file_path_name, self.__ffprobe_path)
+        meta = get_image_meta.get_video_info(file_path_name, self.__ffprobe_path)
+        if not meta: # If ffprobe failed, meta will be an empty dict
+            self.__logger.warning("Could not extract video metadata for '%s'. Skipping.", file_path_name)
+            # We need to raise an exception to be caught by the caller to stop processing this file.
+            raise ValueError("Empty metadata returned from get_video_info")
 
         # Dict to store interesting EXIF data
         # Note, the 'key' must match a field in the 'meta' table
         e: dict = {}
 
-        # Orientation is set to 1 by default, as video files rarely have this info.
-        e['orientation'] = 1
+        # Orientation is set to 1 by default from get_video_info, but can be overridden.
+        e['orientation'] = meta.get('orientation', 1)
 
-        width, height = meta.dimensions
+        width = meta.get('width', 0)
+        height = meta.get('height', 0)
         e['width'] = width
         e['height'] = height
 
         # Attempt to retrieve additional metadata if available in meta
-        e['f_number'] = getattr(meta, 'f_number', None)
-        e['make'] = getattr(meta, 'make', None)
-        e['model'] = getattr(meta, 'model', None)
-        e['exposure_time'] = getattr(meta, 'exposure_time', None)
-        e['iso'] = getattr(meta, 'iso', None)
-        e['focal_length'] = getattr(meta, 'focal_length', None)
-        e['rating'] = getattr(meta, 'rating', None)
-        e['lens'] = getattr(meta, 'lens', None)
-        e['exif_datetime'] = meta.exif_datetime if not None else os.path.getmtime(file_path_name)
+        e['f_number'] = meta.get('f_number')
+        e['make'] = meta.get('make')
+        e['model'] = meta.get('model')
+        e['exposure_time'] = meta.get('exposure_time')
+        e['iso'] = meta.get('iso')
+        e['focal_length'] = meta.get('focal_length')
+        e['rating'] = meta.get('rating')
+        e['lens'] = meta.get('lens')
+        e['exif_datetime'] = meta.get('exif_datetime')
+        if e['exif_datetime'] is None:
+            e['exif_datetime'] = os.path.getmtime(file_path_name)
 
-        if meta.gps_coords is not None:
-            lat, lon = meta.gps_coords
-        else:
-            lat, lon = None, None
+        lat = meta.get('latitude')
+        lon = meta.get('longitude')
         e['latitude'] = round(lat, 4) if lat is not None else lat  # TODO sqlite requires (None,) to insert NULL
         e['longitude'] = round(lon, 4) if lon is not None else lon
 
         # IPTC
-        e['tags'] = getattr(meta, 'tags', None)
-        e['title'] = getattr(meta, 'title', None)
-        e['caption'] = getattr(meta, 'caption', None)
+        e['tags'] = meta.get('tags')
+        e['title'] = meta.get('title')
+        e['caption'] = meta.get('caption')
 
         return e

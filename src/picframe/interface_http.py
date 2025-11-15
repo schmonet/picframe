@@ -125,7 +125,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                     extension = os.path.splitext(page)[1].lower()
                     content_type = EXTENSION_TO_MIMETYPE.get(extension, 'application/octet-stream')
                     if html_page != "current_image_original":
-                        from picframe.video_streamer import VIDEO_EXTENSIONS
+                        from picframe.controller import VIDEO_EXTENSIONS
                         if extension in ('.heic', '.heif'):
                             # as current_image may be heic
                             image = heif_to_image(page)

@@ -77,6 +77,7 @@ model:
   update_interval: 2.0                    # default=2.0, time in seconds to wait between two consecutive scans for new files
   shuffle: True                           # default=True, shuffle on reloading image files - can be changed by MQTT"
   group_by_dir: False                     # default=False, group pictures by directory
+  resume_from_album_subfolder: ""         # default="", path to a log file (i.e. ~/shown_albums.log) to resume from last album
   delete_after_show: False                # default=False, delete picture after it has been shown
   sort_cols: 'fname ASC'                  # default='fname ASC' can be any columns in the table with optional ASC or DESC separated by commas
                                           # fname, last_modified, file_id, orientation, exif_datetime, f_number,

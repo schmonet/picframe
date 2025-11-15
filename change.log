@@ -63,3 +63,109 @@
 - Enhanced test_image_video_player.py to blank the screen during transitions.
 - Created test_show_image.py for the image/video player test.
 - Updated test_video_player.py to align with the latest video playback mechanism.
+
+## 2025-10-31
+
+- **test/test_integrated_video.py**:
+  - Modified `pi3d.Texture` creation to use 3D numpy arrays instead of 2D to match the expected shape.
+  - Reshaped Y, U, and V planes to be 3D arrays before assigning them to the textures.
+  - (Reverted) Removed `i_format` argument from `pi3d.Texture` calls to let `pi3d` infer the format.
+  - (Reverted) Removed the unused import for `pi3d.constants`.
+  - (Reverted) Added import for `pi3d.constants` and changed `pi3d.GL_RED` to `constants.GL_RED`.
+  - (Reverted) Changed `pi3d.Texture` calls to use `i_format=pi3d.GL_RED`.
+- **README.md**:
+  - Added "Video Support Development Status" section with a table summarizing the attempts to implement video playback.
+
+## 2025-10-30
+
+- **src/picframe/video_streamer.py**:
+  - Experimented with different `ffmpeg` command line options for video decoding.
+  - (Reverted) Added `-c:v h264_v4l2m2m` for hardware decoding.
+  - (Reverted) Changed pixel format to `rgb24`.
+  - Set pixel format to `yuv420p` to match the video's native format.
+
+2025-10-31:
+- Continued ffmpeg integration for video playback.
+- Modified test_integrated_video.py to fix numpy array shape mismatch for pi3d textures (from 2D to 3D).
+- Investigated and documented different approaches for video support in README.md.
+
+2025-10-30:
+- Continued with ffmpeg integration for video playback.
+- In test_integrated_video.py, tried using pi3d.constants.GL_RED for single channel textures.
+
+2025-10-29:
+- Started implementation of video playback via ffmpeg frame streaming.
+- Created test_integrated_video.py to test the integration.
+- In test_integrated_video.py, tried using i_format=pi3d.GL_LUMINANCE for textures.
+
+Date: 2025-11-09
+
+- A recurring bug occurs during the alternating playback of videos and images on the target system (Pi Zero 2W).
+- A crash with the error message: AssertionError: There was an empty texture in your Buffer.
+- After a code modification to address the crash, a white screen is displayed instead of the next image after a video finishes.
+- The core problem lies in the transition from video playback back to pi3d-based image display.
+- Video playback appears to interfere with the graphics context (OpenGL), causing the texture for the subsequent image to be loaded incorrectly or deemed invalid.
+- Previous fix attempts to repair the texture loading/assignment logic in viewer_display.py only cycled between the two error states.
+- Proposed Solution: Decouple video playback completely from the pi3d loop.
+- The approach is modeled after the stable test script test/test_image_video_player.py:
+- The pi3d display is cleanly shut down before the video.
+- The video is played using an external, blocking player (cvlc).
+- After the video ends, pi3d is completely re-initialized for the next image display.
+- This method avoids conflicts with the graphics context and ensures the image display starts in a clean state after a video.
+- Added a summary table to TASKS.md to track different approaches for video playback.
+- Investigated the circular error of 'empty texture' and 'white screen' after video playback.
+- The current plan is to re-implement video playback by stopping pi3d, playing the video with an external player, and then re-initializing pi3d, similar to `test/test_image_video_player.py`. This is to avoid a full service restart.
+
+2023-11-12
+- src/picframe/controller.py - Refactored `loop()` to ensure `self.__viewer.slideshow_is_running()` is called only once per iteration.
+- Effect: Addressed potential race condition causing `AssertionError` or white screen after video playback by preventing redundant calls to `slideshow_is_running` within a single loop cycle.
+- src/picframe/viewer_display.py - Moved `self.__slide.set_textures()` call to immediately follow the assignment of `self.__sfg` and `self.__sbg` within `slideshow_is_running()`.
+- Effect: Ensured that the `pi3d.Sprite` object (`self.__slide`) receives the new texture data as soon as it's loaded, preventing `AssertionError` due to drawing with an empty texture.
+- src/picframe/viewer_display.py - Modified `slideshow_is_running()` to set `self.__alpha = 1.0` when `self.__sfg` is `None` (i.e., after video playback).
+- Effect: Addressed white screen issue by forcing the display of the foreground texture in the first frame after `pi3d` re-initialization, bypassing potential issues with background texture activation.
+- src/picframe/controller.py - Simplified `loop()` logic by removing the `if/else` block around the `slideshow_is_running` call.
+- Effect: Streamlined the controller's interaction with the viewer, aiming to prevent race conditions and `AssertionError` by ensuring a consistent single call to the display update method.
+
+2023-11-13
+  - src/picframe/controller.py - Corrected indentation of the `else` block in `loop()` and repositioned `self.__force_navigate = False`.
+  - Effect: Fixed `IndentationError` preventing the program from starting.
+  - src/picframe/controller.py - Removed redundant `self.__force_navigate = False` assignment within the `if is_video:` block.
+  - Effect: Cleaned up redundant code, improving clarity and reducing potential for subtle logic errors.
+  - src/picframe/viewer_display.py - Modified `slideshow_is_running()` to include a `new_image_loaded` flag and extended the safeguard condition to `if self.__sfg is None or new_image_loaded:`.
+  - Effect: Introduced a robust safeguard to explicitly skip the `draw()` call for one frame immediately after a new image is loaded or `pi3d` is re-initialized, giving the graphics engine time to prepare textures and preventing `AssertionError` or white screen.
+
+2023-11-14
+  - src/picframe/viewer_display.py - Refined the safeguard logic in `slideshow_is_running()` by introducing `self.__first_draw_after_init` flag.
+  - Effect: Ensures that `pi3d` has at least one full frame to process texture assignments after re-initialization, preventing `AssertionError` by avoiding `draw()` calls on unready textures.
+  - Refactored video playback logic for improved stability and architectural clarity.
+  - `controller.py`: Simplified the main loop's video handling. After `play_video_blocking` returns, the controller no longer forces a loop restart (`continue`). Instead, it sets the current picture to `None` and lets the loop proceed, delegating state management entirely to the viewer.
+  - `viewer_display.py`: Implemented a "self-healing" mechanism within `play_video_blocking`. This method now encapsulates the entire video playback cycle: cleanly stopping `pi3d` (`slideshow_stop`), playing the video via an external process, and then fully re-initializing the `pi3d` display (`slideshow_start`).
+  - `viewer_display.py`: Added an explicit screen clear (`self.__display.clear()` and `self.__display.swap_buffers()`) after `pi3d` re-initialization to ensure a clean black screen transition and prevent visual artifacts from the previous graphics context.
+  - `viewer_display.py`: Simplified the safeguard in `slideshow_is_running` to `if self.__sfg is None:`. This robustly prevents drawing operations when no texture is ready (i.e., in the first frame after a video), thus avoiding `AssertionError` and white screens.
+  - Reverted video playback mechanism.
+  - Abandoned in-process pi3d re-initialization after numerous attempts resulted in `AssertionError` or a white screen. This indicates a fundamental synchronization issue between texture loading and drawing after the graphics context is destroyed and recreated.
+  - Reverted to the stable method of exiting the picframe application after video playback. The external `watcher.sh` service is now responsible for restarting the application.
+  - `controller.py`: Main loop now breaks after a video is played, triggering a clean shutdown.
+  - `viewer_display.py`: `play_video_blocking` method was simplified to `play_video`, which now only stops pi3d and plays the video, without attempting to re-initialize the display.
+
+2023-11-15 - Finalized robust video playback and album resume logic.
+  - Implemented a stable restart-after-video mechanism using a watcher script.
+  - `controller.py`: Now exits with a special code (10) after video playback, signaling the watcher to restart.
+  - `watcher.sh`: A new wrapper script that runs `picframe` in a loop, restarting it only when it exits with code 10.
+  - `start.py`: Now handles the exit code returned from the controller.
+  - `model.py`:
+      - Completely overhauled the album and file selection logic to support seamless resuming.
+      - Uses `~/picframe/shown_albums.log` to track both completed albums and the next file to be played.
+      - On startup, it now correctly reads the resume-file from the log and sets the internal file index to continue playback at the exact right spot.
+      - Fixed a critical bug where `__file_index` was always reset to 0, which caused the endless loop.
+      - The logic to save the resume state now correctly identifies the file *after* the current one.
+  - `image_cache.py`:
+      - Added robust error handling to prevent crashes when `ffprobe` fails or returns empty metadata for a video.
+      - Fixed a `NameError` by correctly importing `get_video_info`.
+      - Fixed an `AttributeError` by correctly parsing the dictionary returned from `get_video_info`.
+  - `get_image_meta.py`:
+      - Re-introduced the `get_video_info` function to extract metadata from videos using `ffprobe`.
+  - `requirements.txt` & `install.sh`:
+      - Added `exifread` as a dependency to fix a `ModuleNotFoundError`.
+      - Consolidated installation logic into `install.sh`.
+  - Numerous minor bug fixes related to `AttributeError` and `IndentationError` during the implementation of the resume logic.
