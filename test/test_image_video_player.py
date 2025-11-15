@@ -63,7 +63,7 @@ def display_image_subprocess(image_path, duration):
 
 def play_video_subprocess(video_path):
     logger.info("--- Starting Video Playback via Subprocess ---")
-    command = ["cvlc", "--fullscreen", "--no-video-title-show", video_path, "vlc://quit"]
+    command = ["mpv", "--fullscreen", "--no-osc", video_path]
     logger.info(f"Executing command: {' '.join(command)}")
     try:
         subprocess.run(command, check=True, timeout=120)

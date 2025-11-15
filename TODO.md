@@ -1,4 +1,4 @@
-# Funktionsbeschreibung der geänderten und hinzugefügten Dateien
+## 2023-11-11
 
 ## README.md
 - Enthält eine allgemeine Beschreibung des Projekts, eine Liste der wichtigsten Funktionen und einen Verweis auf die Wiki-Dokumentation.  
@@ -157,3 +157,23 @@
   - New script to facilitate testing of single image display.
 - test/test_video_player.py:
   - Updated tests to match the new subprocess-based video playback architecture.
+
+## Done
+
+- [x] **Implement robust video playback:**
+    - [x] Integrate `mpv` as a stable external video player.
+    - [x] Finalize the restart-after-video mechanism using a `watcher.sh` script and a special exit code.
+    - [x] Abandoned the unstable in-process `pi3d` re-initialization approach.
+
+- [x] **Implement seamless album resume logic:**
+    - [x] Use `shown_albums.log` to track both completed albums and the next file to resume from.
+    - [x] Ensure `picframe` continues at the correct file within an album after a video-induced restart.
+    - [x] Fix the endless loop issue where only the first two files of an album were played.
+
+- [x] **Improve Cache Stability:**
+    - [x] Add error handling for video metadata extraction to prevent crashes.
+    - [x] Fix all related `NameError`, `AttributeError`, and `IndentationError` bugs in the cache and model logic.
+
+- [x] **Consolidate Installation:**
+    - [x] Update `install.sh` to include all necessary system and Python dependencies.
+    - [x] Create a `requirements.txt` for clear dependency management.

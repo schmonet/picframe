@@ -1,242 +1,153 @@
+import exifread
+import os
 import logging
+import time
+import subprocess
+import json
 from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
-from fractions import Fraction
-
-try:
-    from pi_heif import register_heif_opener
-
-    register_heif_opener()
-except ImportError:
-    register_heif_opener = None
-
+from datetime import datetime
 
 class GetImageMeta:
+    """
+    A class for extracting metadata from image files.
+    """
 
     def __init__(self, filename):
         self.__logger = logging.getLogger("get_image_meta.GetImageMeta")
+        self.__filename = filename
         self.__tags = {}
-        self.__filename = filename  # in case no exif data in which case needed for size
-        self.__image_width: int = 0
-        self.__image_height: int = 0
-        image = self.get_image_object(filename)
-        if image:
-            self.__image_width, self.__image_height = image.size
-            exif = image.getexif()
-            self.__do_image_tags(exif)
-            self.__do_exif_tags(exif)
-            self.__do_geo_tags(exif)
-            self.__do_iptc_keywords()
-            try:
-                xmp = image.getxmp()
-                if len(xmp) > 0:
-                    self.__do_xmp_keywords(xmp)
-            except Exception as e:
-                xmp = {}
-                self.__logger.warning("PILL getxmp() failed: %s -> %s", filename, e)
- 
-    @property
-    def size(self) -> tuple[int, int]:
-        """Returns the (width, height) tuple of the image."""
-        return (self.__image_width, self.__image_height)
-
-    def __do_image_tags(self, exif):
-        tags = {
-            "Image " + str(TAGS.get(key, key)): value
-            for key, value in exif.items()
-        }
-        self.__tags.update(tags)
-
-    def __do_exif_tags(self, exif):
-        for key, value in TAGS.items():
-            if value == "ExifOffset":
-                break
-        info = exif.get_ifd(key)
-        tags = {
-            "EXIF " + str(TAGS.get(key, key)): value
-            for key, value in info.items()
-        }
-        self.__tags.update(tags)
-
-    def __do_geo_tags(self, exif):
-        for key, value in TAGS.items():
-            if value == "GPSInfo":
-                break
-        gps_info = exif.get_ifd(key)
-        tags = {
-            "GPS " + str(GPSTAGS.get(key, key)): value
-            for key, value in gps_info.items()
-        }
-        self.__tags.update(tags)
-
-    def __find_xmp_key(self, key, dic):
-        for k, v in dic.items():
-            if key == k:
-                return v
-            elif isinstance(v, dict):
-                val = self.__find_xmp_key(key, v)
-                if val:
-                    return val
-            elif isinstance(v, list):
-                for x in v:
-                    if isinstance(x, dict):
-                        val = self.__find_xmp_key(key, x)
-                        if val:
-                            return val
-        return None
-
-    def __do_xmp_keywords(self, xmp):
         try:
-            # title
-            val = self.__find_xmp_key('Headline', xmp)
-            if val and isinstance(val, str) and len(val) > 0:
-                self.__tags['IPTC Object Name'] = val
-            # caption
-            try:
-                val = self.__find_xmp_key('description', xmp)
-                if val:
-                    val = val['Alt']['li']['text']
-                    if val and isinstance(val, str) and len(val) > 0:
-                        self.__tags['IPTC Caption/Abstract'] = val
-            except KeyError:
-                pass
-            # tags
-            try:
-                val = self.__find_xmp_key('subject', xmp)
-                if val:
-                    val = val['Bag']['li']
-                    if val and isinstance(val, list) and len(val) > 0:
-                        tags = ''
-                        for tag in val:
-                            tags += tag + ","
-                        self.__tags['IPTC Keywords'] = tags
-            except KeyError:
-                pass
+            with open(self.__filename, 'rb') as f:
+                self.__tags = exifread.process_file(f, details=False)
+            self.__logger.debug(self.__tags)
         except Exception as e:
-            self.__logger.warning("xmp loading has failed: %s -> %s", self.__filename, e)
-
-    def __do_iptc_keywords(self):
-        try:
-            from iptcinfo3 import IPTCInfo
-            iptcinfo_logger = logging.getLogger('iptcinfo')  # turn off useless log infos
-            iptcinfo_logger.setLevel(logging.ERROR)
-            with open(self.__filename, 'rb') as fh:
-                iptc = IPTCInfo(fh, force=True, out_charset='utf-8')  # TODO put IPTC read in separate function
-                # tags
-                val = iptc['keywords']
-                if val is not None and len(val) > 0:
-                    keywords = ''
-                    for key in iptc['keywords']:
-                        keywords += key.decode('utf-8') + ','  # decode binary strings
-                    self.__tags['IPTC Keywords'] = keywords
-                # caption
-                val = iptc['caption/abstract']
-                if val is not None and len(val) > 0:
-                    self.__tags['IPTC Caption/Abstract'] = iptc['caption/abstract'].decode('utf8')
-                # title
-                val = iptc['object name']
-                if val is not None and len(val) > 0:
-                    self.__tags['IPTC Object Name'] = iptc['object name'].decode('utf-8')
-        except Exception as e:
-            self.__logger.warning("IPTC loading has failed - if you want to use this you will need to install iptcinfo3 %s -> %s",  # noqa: E501
-                                  self.__filename, e)
-
-    def has_exif(self):
-        if self.__tags == {}:
-            return False
-        else:
-            return True
-
-    def __get_if_exist(self, key):
-        if key in self.__tags:
-            return self.__tags[key]
-        return None
-
-    def __convert_to_degrees(self, value):
-        (deg, min, sec) = value
-        return deg + (min / 60.0) + (sec / 3600.0)
-
-    def get_location(self):
-        gps = {"latitude": None, "longitude": None}
-        lat = None
-        lon = None
-
-        gps_latitude = self.__get_if_exist('GPS GPSLatitude')
-        gps_latitude_ref = self.__get_if_exist('GPS GPSLatitudeRef')
-        gps_longitude = self.__get_if_exist('GPS GPSLongitude')
-        gps_longitude_ref = self.__get_if_exist('GPS GPSLongitudeRef')
+            self.__logger.warning("Error reading EXIF data from %s: %s", self.__filename, e)
 
         try:
-            if gps_latitude and gps_latitude_ref and gps_longitude and gps_longitude_ref:
-                lat = self.__convert_to_degrees(gps_latitude)
-                if len(gps_latitude_ref) > 0 and gps_latitude_ref[0] == 'S':
-                    # assume zero length string means N
-                    lat = 0 - lat
-                gps["latitude"] = lat
-                lon = self.__convert_to_degrees(gps_longitude)
-                if len(gps_longitude_ref) and gps_longitude_ref[0] == 'W':
-                    lon = 0 - lon
-                gps["longitude"] = lon
-        except Exception as e:
-            self.__logger.warning("get_location failed on %s -> %s", self.__filename, e)
-        return gps
-
-    def get_orientation(self):
-        try:
-            val = self.__get_if_exist('Image Orientation')
-            if val is not None:
-                return val
+            self.__image = self.get_image_object(self.__filename)
+            if self.__image:
+                self.width, self.height = self.__image.size
             else:
-                return 1
+                self.width, self.height = 0, 0
         except Exception as e:
-            self.__logger.warning("get_orientation failed on %s -> %s", self.__filename, e)
-            return 1
-
-    def get_exif(self, key):
-        try:
-            # ISO prior 2.2, ISOSpeedRatings 2.2, PhotographicSensitivity 2.3
-            iso_keys = ['EXIF ISOSpeedRatings', 'EXIF PhotographicSensitivity', 'EXIF ISO']
-            if key in iso_keys:
-                for iso in iso_keys:
-                    val = self.__get_if_exist(iso)
-                    if val:
-                        # If ISO is returned as a tuple, take the first element
-                        if type(val) is tuple:
-                            val = val[0]
-                        break
-            else:
-                val = self.__get_if_exist(key)
-
-            if val is None:
-                grp, tag = key.split(" ", 1)
-                if grp == "EXIF":
-                    newkey = "Image" + " " + tag
-                    val = self.__get_if_exist(newkey)
-                elif grp == "Image":
-                    newkey = "EXIF" + " " + tag
-                    val = self.__get_if_exist(newkey)
-            if val:
-                if key == "EXIF ExposureTime":
-                    val = str(Fraction(val))
-                elif key == "EXIF FocalLength":
-                    val = str(val)
-                elif key == "EXIF FNumber":
-                    val = float(val)
-                return val
-        except Exception as e:
-            self.__logger.warning("get_exif failed on %s -> %s", self.__filename, e)
-            return None
+            self.__logger.warning("Could not get image properties for %s: %s", self.__filename, e)
+            self.width, self.height = 0, 0
 
     @staticmethod
-    def get_image_object(fname):
+    def get_image_object(filename):
         try:
-            image = Image.open(fname)
-            if image.mode not in ("RGB", "RGBA"):  # mat system needs RGB or more
-                image = image.convert("RGB")
-        # raise # the system should be able to withstand files being moved etc without crashing
+            image = Image.open(filename)
+            # Some HEIC files are not correctly read by Pillow without loading them.
+            if image.format.upper() in ['HEIF', 'HEIC']:
+                image.load()
+            return image
         except Exception as e:
-            logger = logging.getLogger("get_image_meta.GetImageMeta")
-            logger.warning("Can't open file: \"%s\"", fname)
-            logger.warning("Cause: %s", e)
-            image = None
-        return image
+            logging.getLogger("get_image_meta.GetImageMeta").warning("Could not open image %s: %s", filename, e)
+            return None
+
+    @property
+    def size(self):
+        return (self.width, self.height)
+
+    def get_exif(self, key):
+        if key in self.__tags:
+            if key == 'EXIF DateTimeOriginal':
+                return self.__tags[key].values
+            elif key == 'IPTC Keywords':
+                values = self.__tags[key].values
+                return ", ".join([v.decode('utf-8') for v in values]) if isinstance(values, list) else values.decode('utf-8')
+            else:
+                return self.__tags[key].printable
+        return None
+
+    def get_orientation(self):
+        orientation = 1
+        try:
+            if 'Image Orientation' in self.__tags:
+                orientation = self.__tags['Image Orientation'].values[0]
+        except Exception as e:
+            self.__logger.warning("Could not get orientation for %s: %s", self.__filename, e)
+        return orientation
+
+    def get_location(self):
+        def convert_to_degress(value):
+            d = float(value.values[0].num) / float(value.values[0].den)
+            m = float(value.values[1].num) / float(value.values[1].den)
+            s = float(value.values[2].num) / float(value.values[2].den)
+            return d + (m / 60.0) + (s / 3600.0)
+
+        lat = None
+        lon = None
+        try:
+            if "GPS GPSLatitude" in self.__tags and "GPS GPSLatitudeRef" in self.__tags and \
+               "GPS GPSLongitude" in self.__tags and "GPS GPSLongitudeRef" in self.__tags:
+                lat_ref = self.__tags["GPS GPSLatitudeRef"].printable
+                lat = convert_to_degress(self.__tags["GPS GPSLatitude"])
+                if lat_ref != "N":
+                    lat = 0 - lat
+
+                lon_ref = self.__tags["GPS GPSLongitudeRef"].printable
+                lon = convert_to_degress(self.__tags["GPS GPSLongitude"])
+                if lon_ref != "E":
+                    lon = 0 - lon
+        except Exception as e:
+            self.__logger.warning("Could not get location for %s: %s", self.__filename, e)
+
+        return {'latitude': lat, 'longitude': lon}
+
+
+def get_video_info(file_path_name, ffprobe_path=None):
+    """
+    Extracts metadata from a video file using ffprobe.
+    """
+    logger = logging.getLogger("get_image_meta.get_video_info")
+    ffprobe_cmd = ffprobe_path if ffprobe_path else 'ffprobe'
+    command = [
+        ffprobe_cmd,
+        "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        "-show_streams",
+        file_path_name
+    ]
+    meta = {}
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        info = json.loads(result.stdout)
+
+        video_stream = next((s for s in info['streams'] if s['codec_type'] == 'video'), None)
+        if not video_stream:
+            logger.warning("No video stream found in %s", file_path_name)
+            return meta
+
+        meta['width'] = int(video_stream.get('width', 0))
+        meta['height'] = int(video_stream.get('height', 0))
+        meta['orientation'] = 1 # Default for video
+
+        # Check for rotation tag
+        if 'tags' in video_stream and 'rotate' in video_stream['tags']:
+            rotation = int(video_stream['tags']['rotate'])
+            if rotation == 90 or rotation == 270:
+                meta['width'], meta['height'] = meta['height'], meta['width']
+
+        # Get creation time from format tags if available
+        creation_time_str = info.get('format', {}).get('tags', {}).get('creation_time')
+        if creation_time_str:
+            try:
+                # Handle timezone info like '2023-01-01T12:00:00.000000Z'
+                dt_object = datetime.fromisoformat(creation_time_str.replace('Z', '+00:00'))
+                meta['exif_datetime'] = dt_object.timestamp()
+            except ValueError:
+                logger.warning("Could not parse creation_time '%s'", creation_time_str)
+                meta['exif_datetime'] = os.path.getmtime(file_path_name)
+        else:
+            meta['exif_datetime'] = os.path.getmtime(file_path_name)
+
+    except FileNotFoundError:
+        logger.error("ffprobe command not found. Please ensure it is installed and in your PATH.")
+    except subprocess.CalledProcessError as e:
+        logger.error("ffprobe failed for %s: %s", file_path_name, e.stderr)
+    except Exception as e:
+        logger.error("An error occurred while getting video info for %s: %s", file_path_name, e)
+
+    return meta

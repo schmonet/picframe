@@ -6,7 +6,7 @@ import signal
 import sys
 import ssl
 import os
-from picframe.video_streamer import VIDEO_EXTENSIONS
+VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v')
 
 
 def make_date(txt):
@@ -69,17 +69,18 @@ class Controller:
     # ... (most property setters remain the same, just removing video specific logic)
 
     def loop(self):
+        exit_code = 0 # Default exit code for clean shutdown
         while self.keep_looping:
             time_delay = self.__model.time_delay
             fade_time = self.__model.fade_time
             tm = time.time()
             pics = None
-
+            loop_running = True # Assume loop is running
+            skip_image = False
             if not self.paused and tm > self.__next_tm or self.__force_navigate:
                 if self.__next_tm != 0:
                     self.__model.delete_file()
 
-                self.__force_navigate = False
                 pics = self.__model.get_next_file()
 
                 if pics and pics[0] is not None:
@@ -87,10 +88,14 @@ class Controller:
                     
                     if is_video:
                         self.__logger.info("Next item is a video. Handing off to video player.")
-                        self.__viewer.play_video_blocking(pics[0].fname)
-                        self.__next_tm = 0  # Trigger next file immediately after video
-                        pics = None  # Clear pics so slideshow_is_running knows not to load a new image
+                        self.__logger.info(f"Playing video: {pics[0].fname}")
+                        self.__model.save_resume_state() # Save state for file AFTER this video
+                        self.__viewer.play_video(pics[0].fname) # Play video without blocking pi3d re-init
+                        exit_code = 10 # Special exit code to signal restart
+                        self.keep_looping = False
+                        break # Exit loop to allow service restart
                     else:
+                        self.__force_navigate = False
                         # It's an image, set the timer for the next change
                         self.__logger.info("Next item is an image. Displaying.")
                         self.__next_tm = tm + self.__model.time_delay
@@ -111,20 +116,21 @@ class Controller:
                     # No valid file found, try again soon
                     self.__next_tm = 0
                     pics = None
-
-            # This call now handles image display and re-initialization after a video
-            (loop_running, skip_image, _) = self.__viewer.slideshow_is_running(
-                pics, time_delay, fade_time, self.__paused)
             
+            (loop_running, skip_image, _) = self.__viewer.slideshow_is_running( # This single call handles both new images and animation
+                pics, time_delay, fade_time, self.__paused)
+
+
             if not loop_running:
                 break
             if skip_image:
                 self.__next_tm = 0
             
             self.__interface_peripherals.check_input()
+        return exit_code
 
     def start(self):
-        # Don't start the display here. The loop will handle it.
+        self.__viewer.slideshow_start() # Create the pi3d display first
         from picframe.interface_peripherals import InterfacePeripherals
         self.__interface_peripherals = InterfacePeripherals(self.__model, self.__viewer, self)
 

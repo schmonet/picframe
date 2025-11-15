@@ -1,26 +1,19 @@
 #!/bin/bash
 
-# ========================================================================================
-#
-# Picframe Service Watcher Script
-#
-# This script acts as a simple wrapper to launch the main Picframe application.
-# It is intended to be called by the `picframe.service` systemd unit.
-# Its primary role is to activate the correct Python virtual environment before
-# executing the `picframe` command.
-#
-# Author of modifications: Martin Schmalohr
-# AI-assisted development: Google's Gemini
-#
-# ========================================================================================
+# This script acts as a watcher for the picframe application.
+# It runs picframe in a loop, allowing it to be restarted after
+# certain events (like video playback) without terminating the service.
 
-# This script is now a simple wrapper to start the picframe application.
-# Album management and refilling are handled by the picframe Python application itself.
+# Navigate to the directory of the script to ensure correct relative paths
+cd "$(dirname "$0")/.."
 
-# --- CONFIGURATION ---
-PROJECT_DIR="$HOME/picframe"
-VENV_DIR="$PROJECT_DIR/venv"
+while true; do
+  # Run the picframe application using its virtual environment
+  venv/bin/picframe
+  EXIT_CODE=$?
 
-# Start the picframe application
-source "$VENV_DIR/bin/activate"
-exec "$VENV_DIR/bin/picframe" "$PROJECT_DIR/configuration.yaml"
+  # Exit the watcher script if picframe exited with any code other than 10
+  if [ $EXIT_CODE -ne 10 ]; then
+    exit $EXIT_CODE
+  fi
+done
