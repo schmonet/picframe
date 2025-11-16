@@ -434,12 +434,13 @@ class Model:
             # If we've displayed all images...
             #   If it's time to shuffle, set a flag to do so
             #   Loop back, which will reload and shuffle if necessary
-            if self.__file_index == self.__number_of_files:
+            if self.__file_index >= self.__number_of_files:
                 self.__num_run_through += 1
                 if self.shuffle and self.__num_run_through >= self.get_model_config()['reshuffle_num']:
                     self.__reload_files = True
                 self.__file_index = 0
-                continue
+                if self.get_model_config()['group_by_dir']:
+                    self.__reload_files = True # Force reload to select a new album
 
             # Load the current image set
             file_ids = self.__file_list[self.__file_index]
@@ -509,20 +510,8 @@ class Model:
         # This also implicitly handles the removal from the internal __file_list.
         self.force_reload()
 
-    def save_resume_state(self):
-        """
-        Writes the path of the file after the current one to the log for resuming.
-        This ensures playback resumes from this file after a restart.
-        """
-        if self.__file_index >= self.__number_of_files:
-            return # End of album, nothing to resume
-
-        next_file_id = self.__file_list[self.__file_index][0] # file_index points to the *next* file
-        next_file_row = self.__image_cache.get_file_info(next_file_id)
-        if not next_file_row:
-            return
-
-        next_file_path = next_file_row['fname']
+    def save_current_file_state(self, file_path):
+        """Writes the path of the currently displayed file to the log."""
         try:
             with open(self.__shown_albums_log_path, 'r+') as f:
                 lines = f.readlines()
@@ -531,10 +520,22 @@ class Model:
                     lines.pop()
                 f.seek(0)
                 f.writelines(lines)
-                f.write(f"{next_file_path}\n")
+                f.write(f"{file_path}\n")
                 f.truncate()
         except (IOError, FileNotFoundError) as e:
-            self.__logger.error("Could not write resume state to %s: %s", self.__shown_albums_log_path, e)
+            self.__logger.error("Could not write current file state to %s: %s", self.__shown_albums_log_path, e)
+
+    def save_resume_state(self):
+        """
+        Writes the path of the file *after* the current one to the log for resuming after a video.
+        """
+        if self.__file_index >= self.__number_of_files:
+            return # End of album, nothing to resume
+
+        next_file_id = self.__file_list[self.__file_index][0] # file_index points to the *next* file
+        next_file_row = self.__image_cache.get_file_info(next_file_id)
+        if next_file_row:
+            self.save_current_file_state(next_file_row['fname'])
 
     def __get_files(self):
         if self.subdirectory != "":
@@ -546,21 +547,14 @@ class Model:
         group_by_dir = model_config['group_by_dir']
         shuffle_global = model_config['shuffle'] # This is the global shuffle setting
 
+        resumed = False # Flag to check if we resumed from a specific file
+
         if group_by_dir:
-            # Check if the current album is finished.
-            if self.__current_album_path:
-                where_clause_check = " AND ".join([f"fname LIKE '{self.__current_album_path}/%'"] + list(self.__where_clauses.values()))
-                if not self.__image_cache.query_cache(where_clause_check, "1"):
-                    self.__logger.info(f"Album '{self.__current_album_path}' is now empty. Selecting a new one.")
-                    # Add finished album to log file
-                    try:
-                        with open(self.__shown_albums_log_path, 'r+') as f:
-                            lines = f.readlines()
-                            if lines and os.path.isfile(lines[-1].strip()):
-                                lines.insert(-1, f"{self.__current_album_path}\n")
-                                f.seek(0), f.writelines(lines), f.truncate()
-                    except (IOError, FileNotFoundError): pass # Ignore if file not there
-                    self.__current_album_path = None  # Mark as finished
+            if self.__reload_files and self.__current_album_path:
+                self.__logger.info(f"Album '{self.__current_album_path}' finished. Selecting a new one.")
+                self.__shown_albums.add(self.__current_album_path)
+                self.__write_shown_albums_log()
+                self.__current_album_path = None # Mark as finished to force new selection
 
             # If no album is selected (or the previous one finished), find and select a new one.
             if not self.__current_album_path:
@@ -576,7 +570,6 @@ class Model:
                                     all_albums.append(loc_path)
                 
                 # Now, decide which album to play
-                resumed = False # Flag to check if we resumed from a specific file
                 resume_file_path = None
                 if self.__resume_file:
                     resume_file_path = self.__resume_file # Keep a copy
@@ -592,8 +585,8 @@ class Model:
 
                     if not unshown_albums and all_albums:
                         self.__logger.info("All albums shown. Resetting shown_albums.log.")
-                        self.__shown_albums.clear()
-                        self.__write_shown_albums_log()
+                        self.__shown_albums.clear() # Clear in-memory set
+                        # Log will be cleared on next write
                         unshown_albums = all_albums
 
                     if unshown_albums:
@@ -601,7 +594,7 @@ class Model:
                         self.__logger.info(f"Selected album for playback: {self.__current_album_path}")
                         self.__shown_albums.add(self.__current_album_path) # Add to in-memory set
                         self.__write_shown_albums_log()
-                    else:
+                    elif not all_albums:
                         self.__logger.warning("No unshown albums found.")
                         self.__file_list = [] # No albums available
                         self.__number_of_files = 0
@@ -634,18 +627,12 @@ class Model:
                 if resumed and resume_file_path:
                     try:
                         # Find the index of the file we want to resume FROM in the new file list
-                        file_ids_in_album = [row[0] for row in self.__file_list]
-                        resume_file_id = self.__image_cache.query_cache(f"fname = '{resume_file_path}'", "1")[0][0] # Get file_id from path
-                        self.__file_index = file_ids_in_album.index(resume_file_id)
-                        # Find the index of the file we want to resume from in the new file list
                         file_ids_in_album = [row[0] for row in self.__file_list] # Get all file_ids in the current album order
                         resume_file_id = self.__image_cache.query_cache(f"fname = '{resume_file_path}'", "1")[0][0] # Get file_id from its path
                         self.__file_index = file_ids_in_album.index(resume_file_id) # Find the index of that file_id
                         self.__logger.info("Resuming at index %d for file %s", self.__file_index, resume_file_path)
                     except (ValueError, IndexError, TypeError, AttributeError):
                         self.__logger.warning("Could not find resume file in new file list. Starting album from beginning.")
-            else:
-                self.__file_list = [] # Should not happen if albums were found
         elif not resumed: # Only reset index if not resuming
             self.__file_index = 0
             # Existing logic for non-grouped display (flat list from pic_dir)
@@ -685,7 +672,10 @@ class Model:
 
     def __write_shown_albums_log(self):
         """Writes the current set of shown albums to the log file, overwriting it."""
-        with open(self.__shown_albums_log_path, 'w') as f:
-            for album in self.__shown_albums:
-                f.write(f"{album}\n")
-        self.__logger.info("Updated shown_albums.log with %d entries.", len(self.__shown_albums))
+        try:
+            with open(self.__shown_albums_log_path, 'w') as f:
+                for album in sorted(list(self.__shown_albums)): # Sort for consistent output
+                    f.write(f"{album}\n")
+            self.__logger.info("Updated shown_albums.log with %d entries.", len(self.__shown_albums))
+        except (IOError, FileNotFoundError) as e:
+            self.__logger.error("Could not write to shown_albums.log: %s", e)
