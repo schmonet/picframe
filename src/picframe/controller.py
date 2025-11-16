@@ -96,6 +96,7 @@ class Controller:
                         break # Exit loop to allow service restart
                     else:
                         self.__force_navigate = False
+                        self.__model.save_current_file_state(pics[0].fname) # Always save current image state
                         # It's an image, set the timer for the next change
                         self.__logger.info("Next item is an image. Displaying.")
                         self.__next_tm = tm + self.__model.time_delay
