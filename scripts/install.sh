@@ -1,104 +1,106 @@
 #!/bin/bash
 
-# ========================================================================================
-#
-# Picframe Installation Script
-#
-# This script performs a complete setup of the picframe application and its
-# surrounding ecosystem on a Raspberry Pi OS (or similar Debian-based) system.
-#
-# It handles:
-# - System package dependencies (for python, pi3d, ffmpeg, smb, etc.)
-# - Creation of a Python virtual environment.
-# - Installation of all required Python packages.
-# - Setup of the picframe systemd service for automatic startup.
-# - Configuration of cron jobs for media synchronization.
-#
-# ========================================================================================
+# This script installs the picframe application and all its dependencies.
+# It should be run with sudo.
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
-echo "### Starting PicFrame Installation ###"
-
-# --- Configuration ---
-PICFRAME_DIR=$(cd "$(dirname "$0")/.." && pwd)
-USER=$(whoami)
-
-# --- System Dependencies ---
-echo "[1/5] Updating package list and installing system dependencies..."
-sudo apt-get update
-sudo apt-get install -y \
-    python3-venv \
-    python3-pip \
-    libopenjp2-7 \
-    libatlas-base-dev \
-    libavdevice-dev \
-    libavfilter-dev \
-    libavformat-dev \
-    libswscale-dev \
-    ffmpeg \
-    cifs-utils \
-    imagemagick \
-    mediainfo \
-    libimage-exiftool-perl
-
-# --- Python Virtual Environment ---
-echo "[2/5] Setting up Python virtual environment..."
-if [ ! -d "$PICFRAME_DIR/venv" ]; then
-    python3 -m venv "$PICFRAME_DIR/venv"
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root (sudo)"
+  exit 1
 fi
 
-# --- Python Dependencies ---
-echo "[3/5] Installing Python packages into virtual environment..."
-"$PICFRAME_DIR/venv/bin/pip" install --upgrade pip
-"$PICFRAME_DIR/venv/bin/pip" install -r "$PICFRAME_DIR/requirements.txt"
+PICFRAME_DIR=$(dirname "$(realpath "$0")")/..
+PICFRAME_USER=${SUDO_USER:-$(whoami)}
 
-# --- Systemd Service Setup ---
-echo "[4/5] Setting up picframe systemd service..."
+echo "Starting picframe installation..."
+echo "Project directory: $PICFRAME_DIR"
+echo "Running as user: $PICFRAME_USER"
 
-SERVICE_FILE="/etc/systemd/system/picframe.service"
+# --- 1. System Dependencies ---
+echo "Updating package list and installing system dependencies..."
+apt-get update
+apt-get install -y \
+    git \
+    python3-pip \
+    python3-venv \
+    libopenjp2-7 \
+    libtiff5 \
+    libatlas-base-dev \
+    ffmpeg \
+    mpv \
+    samba-client \
+    cec-utils \
+    build-essential
 
-sudo bash -c "cat > $SERVICE_FILE" << EOL
+# --- 2. System Configuration ---
+echo "Applying system configurations..."
+
+# Add user to the video group for framebuffer and CEC access
+echo "Adding user '$PICFRAME_USER' to the 'video' group..."
+usermod -a -G video "$PICFRAME_USER"
+
+# Disable console cursor blinking
+echo "Disabling console cursor blink..."
+if ! grep -q "consoleblank=0" /boot/firmware/cmdline.txt; then
+    sed -i '1 s/$/ consoleblank=0/' /boot/firmware/cmdline.txt
+fi
+
+# --- 3. Python Virtual Environment and Application ---
+echo "Setting up Python virtual environment and installing picframe..."
+cd "$PICFRAME_DIR"
+# Run as the actual user to avoid creating root-owned files in the user's home
+sudo -u "$PICFRAME_USER" bash << EOF
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install wheel
+pip install .
+deactivate
+EOF
+
+# --- 4. Make Scripts Executable ---
+echo "Making shell scripts executable..."
+chmod +x "$PICFRAME_DIR"/scripts/*.sh
+
+# --- 5. Systemd Service for picframe ---
+echo "Creating and enabling systemd service for picframe..."
+cat > /etc/systemd/system/picframe.service << EOF
 [Unit]
-Description=PicFrame Service (Watcher Architecture)
+Description=PicFrame Slideshow Service
 After=network.target
 
 [Service]
-User=$USER
+User=$PICFRAME_USER
+Group=video
 WorkingDirectory=$PICFRAME_DIR
 ExecStart=$PICFRAME_DIR/scripts/watcher.sh
 Restart=on-failure
-RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
-EOL
+EOF
 
-echo "Reloading systemd daemon and enabling picframe service..."
-sudo systemctl daemon-reload
-sudo systemctl enable picframe.service
+systemctl daemon-reload
+systemctl enable picframe.service
 
-# --- Cron Job Setup ---
-echo "[5/5] Setting up cron jobs for media synchronization..."
+# --- 6. Cron Jobs ---
+echo "Setting up cron jobs..."
+# Create a temporary crontab file
+CRON_FILE="/tmp/picframe_cron"
 
-# Create a temporary cron file
-CRON_TMP_FILE=$(mktemp)
+# Write cron jobs, ensuring they run as the correct user
+cat > "$CRON_FILE" << EOF
+# Picframe cron jobs
+*/5 * * * * $PICFRAME_DIR/scripts/sync_photos.sh >> $PICFRAME_DIR/logs/sync_photos.log 2>&1
+*/15 * * * * $PICFRAME_DIR/venv/bin/python $PICFRAME_DIR/scripts/pir_manager.py >> $PICFRAME_DIR/logs/pir_manager.log 2>&1
+EOF
 
-# Add the sync job (runs every hour)
-echo "0 * * * * $PICFRAME_DIR/scripts/sync_photos.sh >> $PICFRAME_DIR/sync.log 2>&1" > "$CRON_TMP_FILE"
+crontab -u "$PICFRAME_USER" "$CRON_FILE"
+rm "$CRON_FILE"
 
-# Install the new crontab
-crontab "$CRON_TMP_FILE"
-rm "$CRON_TMP_FILE"
-
-echo "Cron job for sync_photos.sh has been set up to run hourly."
-
-
-echo ""
-echo "### Installation Complete! ###"
-echo ""
-echo "What's next?"
-echo "1. Make sure your 'configuration.yaml' and 'scripts/sync_config.yaml' are correctly set up."
-echo "2. You can start the picture frame now with: sudo systemctl start picframe.service"
-echo "3. To check the status, use: sudo systemctl status picframe.service"
-echo ""
+echo "----------------------------------------------------"
+echo "Installation complete!"
+echo "A reboot is recommended to apply all changes (user group, kernel parameters)."
+echo "You can start the service manually with: sudo systemctl start picframe.service"
+echo "----------------------------------------------------"

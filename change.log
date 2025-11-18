@@ -169,3 +169,39 @@ Date: 2025-11-09
       - Added `exifread` as a dependency to fix a `ModuleNotFoundError`.
       - Consolidated installation logic into `install.sh`.
   - Numerous minor bug fixes related to `AttributeError` and `IndentationError` during the implementation of the resume logic.
+
+## 2025-11-18
+
+### feat: Robuste Video-Übergänge und komplettes Installations-Skript
+
+- **feat(viewer_display):** Implementierung einer robusten Methode zum Schwärzen des Bildschirms während Video-Übergängen.
+  - Verwendet `dd if=/dev/zero of=/dev/fb0`, um die Konsole vor und nach der Videowiedergabe zuverlässig auszublenden.
+  - Eine `WARNING` im Log (`dd ... returned non-zero exit status 1`) wird als "Feature" akzeptiert, da der gewünschte visuelle Effekt (schwarzer Bildschirm) erzielt wird.
+
+- **feat(install):** Erstellung eines umfassenden `install.sh`-Skripts zur Automatisierung der gesamten Systemeinrichtung.
+  - Installiert alle Systemabhängigkeiten (python, mpv, cec-utils, etc.).
+  - Fügt den Benutzer zur `video`-Gruppe hinzu, um den Zugriff auf Framebuffer und CEC zu gewährleisten.
+  - Deaktiviert den blinkenden Konsolen-Cursor über die Kernel-Kommandozeile (`/boot/firmware/cmdline.txt`) für saubere Übergänge.
+  - Richtet den `picframe.service` für `systemd` ein.
+  - Konfiguriert die `cron`-Jobs für `sync_photos.sh` und `pir_manager.py`.
+
+- **refactor(interface_peripherals):** Der Mauszeiger wird nun direkt in `pi3d` deaktiviert (`show_pointer=False`), was zuverlässiger ist als externe Skripte.
+
+
+## 2025-11-17
+
+### fix: Stabilität der Videowiedergabe und Fehlerbehebung
+
+- **fix(watcher):** Das Neustart-Signal für Videos wird nun über eine Umgebungsvariable (`PICFRAME_RESTART_CODE`) anstatt eines Kommandozeilen-Arguments übergeben.
+  - Behebt den Fehler `picframe: error: unrecognized arguments: 10`.
+  - Vereinfacht das `watcher.sh`-Skript erheblich.
+
+- **refactor(viewer_display):** Radikale Vereinfachung der `play_video`-Methode.
+  - Alle instabilen Versuche, den Bildschirm manuell zu färben (z.B. mit `dd` und temporären Dateien oder direktem Schreiben in den Framebuffer), wurden entfernt.
+  - Dies behebt diverse Fehler wie `[Errno 28] No space left on device` und `BrokenPipeError`.
+
+- **chore(troubleshooting):** Systematische Untersuchung und Dokumentation verschiedener Methoden zur Bildschirmsteuerung.
+  - **Versuch 1-7 (Fehlgeschlagen):** Diverse `dd`- und Python-basierte Ansätze zum Färben des Framebuffers führten zu Fehlern (`BrokenPipe`, `No space left on device`, `KeyError`).
+  - **Versuch 8 (Stabil):** Entfernung aller manuellen Bildschirmsteuerungen. Ergebnis: Stabile Funktion, aber sichtbare Konsole beim Übergang.
+  - **Versuch 9 (Fehlgeschlagen):** Einsatz von `setterm` zur Färbung der Konsole. Funktionierte zunächst, war aber nach einem System-Neustart instabil.
+  - **Versuch 11 (Erfolgreich):** Gezielter Einsatz von `dd if=/dev/zero` als finale Lösung (siehe 2025-11-18).

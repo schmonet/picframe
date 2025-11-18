@@ -133,7 +133,7 @@ class InterfacePeripherals:
             shadow_radius=3,
             spacing=0,
         )
-        return pi3d.Gui(font, show_pointer=self.__input_type == "mouse")
+        return pi3d.Gui(font, show_pointer=False)
 
     def __get_mouse(self) -> typing.Optional["pi3d.Mouse"]:
         if self.__input_type in ["touch", "mouse"]:
