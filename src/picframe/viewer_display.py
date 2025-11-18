@@ -45,7 +45,12 @@ class ViewerDisplay:
         self.__edge_alpha = config['edge_alpha']
 
         self.__mat_images, self.__mat_images_tol = self.__get_mat_image_control_values(config['mat_images'])
-        self.__mat_type = config['mat_type']
+        # If starting after a video (exit code 10), force a black background to avoid a color flash.
+        # Check environment variable from watcher.sh
+        if os.getenv('PICFRAME_RESTART_CODE') == '10':
+            self.__solid_background = [0.2, 0.2, 0.3, 1.0] # Force dark blue background on video restart
+        else:
+            self.__solid_background = config['solid_background']
         self.__outer_mat_color = config['outer_mat_color']
         self.__inner_mat_color = config['inner_mat_color']
         self.__outer_mat_border = config['outer_mat_border']
@@ -56,7 +61,7 @@ class ViewerDisplay:
 
         self.__fps = config['fps']
         self.__background = config['background']
-        self.__solid_background = config['solid_background']
+        self.__mat_type = config['mat_type']
         self.__blend_type = {"blend": 0.0, "burn": 1.0, "bump": 2.0}[config['blend_type']]
         self.__font_file = os.path.expanduser(config['font_file'])
         self.__shader = os.path.expanduser(config['shader'])
@@ -137,7 +142,7 @@ class ViewerDisplay:
         # Framebuffer settings for black screen
         self.__fb_width = 1920 # TODO: read from config or detect
         self.__fb_height = 1080
-        self.__fb_bpp = 16 # bits_per_pixel
+        self.__fb_bpp = 32 # bits_per_pixel for RGBA (4 bytes * 8 bits)
         self.__fb_bytes = int(self.__fb_width * self.__fb_height * (self.__fb_bpp / 8))
 
     def _show_black_screen(self):
@@ -860,11 +865,33 @@ class ViewerDisplay:
 
 
     def play_video(self, video_path: str):
-        self.__logger.info("Video file detected. Handing off to external player.")
+        self.__logger.info("Video file detected. Preparing for external player.")
+        
+        def _blank_screen():
+            """Blanks the screen by writing zeros to the framebuffer."""
+            try:
+                # Using a simple dd command to write zeros is a robust way to get a black screen.
+                command = ["dd", "if=/dev/zero", "of=/dev/fb0", "bs=1M"]
+                subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.__logger.debug("Screen blanked successfully.")
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                self.__logger.warning(f"Could not blank screen using dd: {e}")
 
-        # 1. Stop pi3d cleanly
+        # --- Step 1: Stop pi3d cleanly ---
         if self.__display:
             self.slideshow_stop() # This destroys the display
 
-        # 3. Play the video (blocking)
-        self._play_video_subprocess(video_path)
+        # --- Step 2: Blank the screen BEFORE video starts ---
+        _blank_screen()
+
+        # --- Step 3: Play the video (blocking call) ---
+        self.__logger.info(f"Starting mpv for: {video_path}")
+        try:
+            command = ["mpv", "--no-config", "--fullscreen", "--really-quiet", video_path]
+            subprocess.run(command, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            self.__logger.error(f"Error during video playback with mpv: {e}")
+
+        self.__logger.info("Video playback finished.")
+        # --- Step 4: Blank the screen AGAIN after video finishes ---
+        _blank_screen()

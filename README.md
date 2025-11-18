@@ -296,79 +296,95 @@ This table summarizes the results of testing different command-line video player
 | &nbsp;&nbsp;*5. Attempt 2: SW Decoding (to `rgb24`)* | `ffmpeg`, `pi3d`, `numpy` | Failed | `ffmpeg` process crashed with a "**Segmentation Fault**" ("Speicherzugriffsfehler"). The high memory consumption and data bandwidth required for the uncompressed `rgb24` format likely caused the crash. |
 | &nbsp;&nbsp;*6. Attempt 3: SW Decoding (to `yuv420p`)* | `ffmpeg`, `pi3d`, `numpy` | Failed | While the `pi3d` texture loading issues were resolved in the test script, the overall approach remains **too fragile**. Final tests resulted in a **black screen**, and the complexity of debugging the `ffmpeg` pipeline outweighs the potential benefits compared to using a stable external player like `mpv`. **Specific Issues:** a) `GL_LUMINANCE / GL_RED` constants not found. b) `pi3d.Texture` expected a 3D array but received 2D. c) The final correction (3D array) has not yet been tested with the current code. |
 
---- Testergebnisse ---
-| Videodatei | Status | Wiedergabezeit | Performance | Dropped Frames | Details |
-|------------|--------|----------------|-------------|----------------|---------|
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.avi | OK | 16.41s | Langsam | 0 |  |
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mkv | OK | 15.74s | Langsam | 0 |  |
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mov | OK | 15.14s | Langsam | 0 |  |
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.00s | Langsam | 0 |  |
-| Super8.mp4 | OK | 25.21s | Langsam | 0 |  |
-| 1280x720p25_6bar_2ch_libx264_high_yuv420p_gop50_bit2500k_max2500k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.10s | Langsam | 0 |  |
-| 1280x720p25_6bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.12s | Langsam | 0 |  |
-| 1280x720p25_6bar_2ch_libx265_main_yuv420p_gop50_bit2500k_max2500k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.60s | Langsam | 0 |  |
-| 1280x720p25_6bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.97s | Langsam | 0 |  |
-| 1280x720p50_6bar_2ch_libx264_high_yuv420p_gop100_bit3584k_max3584k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.87s | Langsam | 0 |  |
-| 1280x720p50_6bar_2ch_libx264_high_yuv420p_gop100_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.93s | Langsam | 0 |  |
-| 1280x720p50_6bar_2ch_libx265_main_yuv420p_gop100_bit3584k_max3584k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.89s | Langsam | 0 |  |
-| 1280x720p50_6bar_2ch_libx265_main_yuv420p_gop100_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.94s | Langsam | 0 |  |
-| 1920x1080i25_7bar_2ch_libx264_high_yuv420p_gop50_bit3584k_max3584k_buf6M_lcaac_256k_48k_2ch_ger.mp4 | OK | 16.15s | Langsam | 0 |  |
-| 1920x1080i25_7bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 16.53s | Langsam | 0 |  |
-| 1920x1080i25_7bar_2ch_libx265_main_yuv420p_gop50_bit3584k_max3584k_buf6M_lcaac_256k_48k_2ch_ger.mp4 | OK | 18.28s | Langsam | 0 |  |
-| 1920x1080i25_7bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 19.58s | Langsam | 0 |  |
-| 1920x1080p25_7bar_2ch_libx264_high_yuv420p_gop50_bit3584k_max3584k_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 17.23s | Langsam | 0 |  |
-| 1920x1080p25_7bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 16.80s | Langsam | 0 |  |
-| 1920x1080p25_7bar_2ch_libx265_main_yuv420p_gop50_bit3584k_max3584k_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 17.58s | Langsam | 0 |  |
-| 1920x1080p25_7bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | OK | 19.15s | Langsam | 0 |  |
-| 320x180p12_1bar_2ch_libx264_baseline_yuv420p_gop25_bit128k_max128k_buf256k_lcaac_56k_48k_2ch_eng.mp4 | OK | 16.81s | Langsam | 0 |  |
-| 320x180p12_1bar_2ch_libx265_baseline_yuv420p_gop25_bit128k_max128k_buf256k_lcaac_56k_48k_2ch_eng.mp4 | OK | 15.97s | Langsam | 0 |  |
-| 480x270p25_2bar_2ch_libx264_baseline_yuv420p_gop50_bit256k_max256k_buf512k_lcaac_64k_48k_2ch_eng.mp4 | OK | 15.86s | Langsam | 0 |  |
-| 480x270p25_2bar_2ch_libx265_baseline_yuv420p_gop50_bit256k_max256k_buf512k_lcaac_64k_48k_2ch_eng.mp4 | OK | 15.89s | Langsam | 0 |  |
-| 512x288p25_3bar_2ch_libx264_main_yuv420p_gop50_bit512k_max512k_buf1024k_lcaac_96k_48k_2ch_eng.mp4 | OK | 15.87s | Langsam | 0 |  |
-| 512x288p25_3bar_2ch_libx265_main_yuv420p_gop50_bit512k_max512k_buf1024k_lcaac_96k_48k_2ch_eng.mp4 | OK | 16.00s | Langsam | 0 |  |
-| 640x360p25_4bar_2ch_libx264_main_yuv420p_gop50_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.89s | Langsam | 0 |  |
-| 640x360p25_4bar_2ch_libx265_main_yuv420p_gop50_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.97s | Langsam | 0 |  |
-| 640x720p50_4bar_2ch_libx264_high_yuv420p_gop100_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.84s | Langsam | 0 |  |
-| 640x720p50_4bar_2ch_libx265_main_yuv420p_gop100_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.82s | Langsam | 0 |  |
-| 720x576i25_5bar_2ch_libx264_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.97s | Langsam | 0 |  |
-| 720x576i25_5bar_2ch_libx265_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.00s | Langsam | 0 |  |
-| 720x576p25_5bar_2ch_libx264_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.98s | Langsam | 0 |  |
-| 720x576p25_5bar_2ch_libx265_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.06s | Langsam | 0 |  |
-| 960x540p25_5bar_2ch_libx264_main_yuv420p_gop50_bit1800k_max1800k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.95s | Langsam | 0 |  |
-| 960x540p25_5bar_2ch_libx264_main_yuv420p_gop50_bit2500k_max2500k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.01s | Langsam | 0 |  |
-| 960x540p25_5bar_2ch_libx265_main_yuv420p_gop50_bit1800k_max1800k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.05s | Langsam | 0 |  |
-| 960x540p50_5bar_2ch_libx264_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.85s | Langsam | 0 |  |
-| 960x540p50_5bar_2ch_libx265_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.91s | Langsam | 0 |  |
-| 960x720p50_5bar_2ch_libx264_high_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | OK | 15.94s | Langsam | 0 |  |
-| 960x720p50_5bar_2ch_libx265_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | OK | 16.03s | Langsam | 0 |  |
-| 1080x1080p50_libx264_high_yuv420p_bt709_gop100_bit3650k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.69s | Langsam | 0 |  |
-| 1080x1920p50_libx264_high_yuv420p_bt709_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | OK | 24.24s | Langsam | 0 |  |
-| 1280x720p25_libx264_high_yuv420p_bt709_gop50_bit3584k_lcaac_160k_48k_2ch_en.mp4 | OK | 16.02s | Langsam | 0 |  |
-| 1280x720p25_libx264_high_yuv420p_bt709_gop50_bit5M_lcaac_160k_48k_2ch_en.mp4 | OK | 15.00s | Langsam | 0 |  |
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.04s | Langsam | 0 |  |
-| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit5M_lcaac_160k_48k_2ch_en.mp4 | OK | 14.93s | Langsam | 0 |  |
-| 1920x1080p50_libx264_high_yuv420p_bt709_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | OK | 23.31s | Langsam | 0 |  |
-| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-hlg10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | OK | 68.22s | Langsam | 0 |  |
-| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-pq10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | OK | 71.21s | Langsam | 0 |  |
-| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-sdr10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | OK | 73.07s | Langsam | 0 |  |
-| 270x270p25_libx264_baseline_yuv420p_bt709_gop50_bit144k_lcaac_96k_48k_2ch_en.mp4 | OK | 18.41s | Langsam | 0 |  |
-| 270x480p25_libx264_baseline_yuv420p_bt709_gop50_bit256k_lcaac_64k_48k_2ch_en.mp4 | OK | 14.79s | Langsam | 0 |  |
-| 360x360p25_libx264_main_yuv420p_bt709_gop50_bit576k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.89s | Langsam | 0 |  |
-| 360x640p25_libx264_main_yuv420p_bt709_gop50_bit1024k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.89s | Langsam | 0 |  |
-| 3840x2160p50_libx264_high_yuv420p_bt709_gop100_bit10M_lcaac_160k_48k_2ch_en.mp4 | Fehler | 34.44s | Langsam | 0 | Exit-Code: 2 |
-| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-hlg10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | Fehler | 47.99s | Langsam | 0 | Exit-Code: -9 |
-| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-pq10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | Fehler | 45.61s | Langsam | 0 | Exit-Code: -9 |
-| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-sdr10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | Fehler | 59.57s | Langsam | 0 | Exit-Code: 2 |
-| 480x270p25_libx264_baseline_yuv420p_bt709_gop50_bit256k_lcaac_128k_48k_2ch_en.mp4 | OK | 18.59s | Langsam | 0 |  |
-| 512x288p25_libx264_main_yuv420p_bt709_gop50_bit512k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.05s | Langsam | 0 |  |
-| 540x540p25_libx264_main_yuv420p_bt709_gop50_bit1150k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.96s | Langsam | 0 |  |
-| 540x960p25_libx264_main_yuv420p_bt709_gop50_bit1800k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.13s | Langsam | 0 |  |
-| 640x360p25_libx264_main_yuv420p_bt709_gop50_bit1024k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.93s | Langsam | 0 |  |
-| 720x1280p25_libx264_high_yuv420p_bt709_gop50_bit3584k_lcaac_160k_48k_2ch_en.mp4 | OK | 15.01s | Langsam | 0 |  |
-| 720x1280p50_libx264_high_yuv420p_bt709_gop100_bit5M_lcaac_160k_48k_2ch_en.mp4 | OK | 14.91s | Langsam | 0 |  |
-| 720x720p25_libx264_high_yuv420p_bt709_gop50_bit2250k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.91s | Langsam | 0 |  |
-| 960x540p25_libx264_main_yuv420p_bt709_gop50_bit2500k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.99s | Langsam | 0 |  |
-| 960x540p50_libx264_main_yuv420p_bt709_gop100_bit2500k_lcaac_160k_48k_2ch_en.mp4 | OK | 14.83s | Langsam | 0 |  |
+Hiding Console on HDMI during Video-Image Transition
+
+| Versuch Nr. | Methode | Ziel | Ergebnis | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | `dd` mit großem Block (`bs=...`) | Bildschirm vor/nach Video mit einer Farbe füllen. | `[Errno 32] Broken pipe`, grauer Balken am oberen Rand. | ❌ Fehlgeschlagen |
+| 2 | `dd` als Stream (ohne `bs`) | `BrokenPipeError` umgehen. | Funktionierte vor dem Video, aber `BrokenPipeError` trat nach dem Video auf. | ❌ Fehlgeschlagen |
+| 3 | `dd` mit temporärer Datei in `/dev/shm` | `BrokenPipeError` nach dem Video umgehen. | `KeyError: 'RGBA'` durch falsche Verwendung von `img.save()`. | ❌ Fehlgeschlagen |
+| 4 | `dd` mit korrekter temporärer Datei | `KeyError` beheben. | `dd` schlug mit `exit status 1` fehl. | ❌ Fehlgeschlagen |
+| 5 | `dd` mit Option `conv=notrunc` | `dd` robuster machen. | `dd` schlug weiterhin mit `exit status 1` fehl. | ❌ Fehlgeschlagen |
+| 6 | Python `open()` statt `dd` | `dd`-Fehler umgehen. | `[Errno 28] No space left on device` beim Schreiben in `/dev/shm`. | ❌ Fehlgeschlagen |
+| 7 | Direktschreiben in `/dev/fb0` mit Python | Temporäre Datei und Speicherplatzfehler umgehen. | `[Errno 28] No space left on device` (wahrscheinlich ein Pipe-Problem). | ❌ Fehlgeschlagen |
+| 8 | **Radikale Vereinfachung** | Alle manuellen Färbeversuche entfernen und auf den Neustart von `pi3d` vertrauen. | Alle Fehler behoben. Übergang ist die normale, sichtbare Konsole. | ✅ Stabil, aber kosmetisch nicht ideal |
+| 9 | `setterm` in `watcher.sh` | Die schwarze Konsole an die `pi3d`-Hintergrundfarbe anpassen. | Funktionierte zunächst, verursachte aber Probleme nach einem System-Neustart. | ❌ Nicht zuverlässig |
+| 10 | **Rückkehr zur stabilen Lösung** | `setterm`-Befehle entfernen. | Wiederherstellung des stabilen Zustands von Versuch 8. | ✅ Stabil, aber kosmetisch nicht ideal |
+| 11 | `dd if=/dev/zero` in `viewer_display.py` | Konsole vor/nach Video schwarz schalten, um Text zu verbergen. | `dd` schlägt fehl, aber der Nebeneffekt ist ein schwarzer Bildschirm, der die Konsole verdeckt. | ✅ **Funktionierendes Feature** |
+
+
+| Videodatei | Auflösung | Codec | Dauer | Status | Laufzeit | Performance | Dropped | Delayed | FPS | Details |
+|------------|-----------|-------|--------|--------|----------|-------------|---------|---------|-----|---------|
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.avi | 1280x720 | h264 | 9.98s | OK | 16.44s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mkv | 1280x720 | h264 | 0.00s | OK | 15.13s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mov | 1280x720 | h264 | 9.04s | OK | 14.81s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mp4 | 1280x720 | h264 | 9.04s | OK | 14.84s | Langsam | 0 | 0 | 0.0 |  |
+| Super8.mp4 | 960x720 | h264 | 19.11s | OK | 24.92s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_6bar_2ch_libx264_high_yuv420p_gop50_bit2500k_max2500k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | h264 | 10.08s | OK | 16.08s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_6bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | h264 | 10.08s | OK | 15.92s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_6bar_2ch_libx265_main_yuv420p_gop50_bit2500k_max2500k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | hevc | 10.08s | OK | 16.23s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_6bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | hevc | 10.08s | OK | 16.40s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_6bar_2ch_libx264_high_yuv420p_gop100_bit3584k_max3584k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | h264 | 10.04s | OK | 15.98s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_6bar_2ch_libx264_high_yuv420p_gop100_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | h264 | 10.04s | OK | 16.09s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_6bar_2ch_libx265_main_yuv420p_gop100_bit3584k_max3584k_buf7M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | hevc | 10.04s | OK | 16.93s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_6bar_2ch_libx265_main_yuv420p_gop100_bit5M_max5M_buf10M_lcaac_192k_48k_2ch_eng.mp4 | 1280x720 | hevc | 10.04s | OK | 17.07s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080i25_7bar_2ch_libx264_high_yuv420p_gop50_bit3584k_max3584k_buf6M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | h264 | 10.08s | OK | 19.33s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080i25_7bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | h264 | 10.08s | OK | 17.84s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080i25_7bar_2ch_libx265_main_yuv420p_gop50_bit3584k_max3584k_buf6M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | hevc | 10.08s | OK | 16.99s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080i25_7bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | hevc | 10.08s | OK | 16.65s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p25_7bar_2ch_libx264_high_yuv420p_gop50_bit3584k_max3584k_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | h264 | 10.08s | OK | 16.07s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p25_7bar_2ch_libx264_high_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | h264 | 10.08s | OK | 16.08s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p25_7bar_2ch_libx265_main_yuv420p_gop50_bit3584k_max3584k_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | hevc | 10.08s | OK | 16.68s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p25_7bar_2ch_libx265_main_yuv420p_gop50_bit5M_max5M_buf10M_lcaac_256k_48k_2ch_ger.mp4 | 1920x1080 | hevc | 10.08s | OK | 16.67s | Langsam | 0 | 0 | 0.0 |  |
+| 320x180p12_1bar_2ch_libx264_baseline_yuv420p_gop25_bit128k_max128k_buf256k_lcaac_56k_48k_2ch_eng.mp4 | 320x180 | h264 | 10.17s | OK | 15.72s | Langsam | 0 | 0 | 0.0 |  |
+| 320x180p12_1bar_2ch_libx265_baseline_yuv420p_gop25_bit128k_max128k_buf256k_lcaac_56k_48k_2ch_eng.mp4 | 320x180 | hevc | 10.17s | OK | 15.78s | Langsam | 0 | 0 | 0.0 |  |
+| 480x270p25_2bar_2ch_libx264_baseline_yuv420p_gop50_bit256k_max256k_buf512k_lcaac_64k_48k_2ch_eng.mp4 | 480x270 | h264 | 10.08s | OK | 15.80s | Langsam | 0 | 0 | 0.0 |  |
+| 480x270p25_2bar_2ch_libx265_baseline_yuv420p_gop50_bit256k_max256k_buf512k_lcaac_64k_48k_2ch_eng.mp4 | 480x270 | hevc | 10.08s | OK | 15.84s | Langsam | 0 | 0 | 0.0 |  |
+| 512x288p25_3bar_2ch_libx264_main_yuv420p_gop50_bit512k_max512k_buf1024k_lcaac_96k_48k_2ch_eng.mp4 | 512x288 | h264 | 10.08s | OK | 15.82s | Langsam | 0 | 0 | 0.0 |  |
+| 512x288p25_3bar_2ch_libx265_main_yuv420p_gop50_bit512k_max512k_buf1024k_lcaac_96k_48k_2ch_eng.mp4 | 512x288 | hevc | 10.08s | OK | 15.95s | Langsam | 0 | 0 | 0.0 |  |
+| 640x360p25_4bar_2ch_libx264_main_yuv420p_gop50_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | 640x360 | h264 | 10.08s | OK | 15.77s | Langsam | 0 | 0 | 0.0 |  |
+| 640x360p25_4bar_2ch_libx265_main_yuv420p_gop50_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | 640x360 | hevc | 10.08s | OK | 15.89s | Langsam | 0 | 0 | 0.0 |  |
+| 640x720p50_4bar_2ch_libx264_high_yuv420p_gop100_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | 640x720 | h264 | 10.04s | OK | 15.89s | Langsam | 0 | 0 | 0.0 |  |
+| 640x720p50_4bar_2ch_libx265_main_yuv420p_gop100_bit1024k_max1024k_buf2M_lcaac_192k_48k_2ch_eng.mp4 | 640x720 | hevc | 10.04s | OK | 15.70s | Langsam | 0 | 0 | 0.0 |  |
+| 720x576i25_5bar_2ch_libx264_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 720x576 | h264 | 10.08s | OK | 15.89s | Langsam | 0 | 0 | 0.0 |  |
+| 720x576i25_5bar_2ch_libx265_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 720x576 | hevc | 10.08s | OK | 15.88s | Langsam | 0 | 0 | 0.0 |  |
+| 720x576p25_5bar_2ch_libx264_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 720x576 | h264 | 10.08s | OK | 15.94s | Langsam | 0 | 0 | 0.0 |  |
+| 720x576p25_5bar_2ch_libx265_main_yuv420p_gop50_bit1536k_max1536k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 720x576 | hevc | 10.08s | OK | 15.90s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p25_5bar_2ch_libx264_main_yuv420p_gop50_bit1800k_max1800k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 960x540 | h264 | 10.08s | OK | 15.98s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p25_5bar_2ch_libx264_main_yuv420p_gop50_bit2500k_max2500k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 960x540 | h264 | 10.08s | OK | 15.92s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p25_5bar_2ch_libx265_main_yuv420p_gop50_bit1800k_max1800k_buf3M_lcaac_192k_48k_2ch_eng.mp4 | 960x540 | hevc | 10.08s | OK | 15.92s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p50_5bar_2ch_libx264_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | 960x540 | h264 | 10.04s | OK | 15.80s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p50_5bar_2ch_libx265_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | 960x540 | hevc | 10.04s | OK | 15.80s | Langsam | 0 | 0 | 0.0 |  |
+| 960x720p50_5bar_2ch_libx264_high_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | 960x720 | h264 | 10.04s | OK | 15.95s | Langsam | 0 | 0 | 0.0 |  |
+| 960x720p50_5bar_2ch_libx265_main_yuv420p_gop100_bit2500k_max2500k_buf6500k_lcaac_192k_48k_2ch_eng.mp4 | 960x720 | hevc | 10.04s | OK | 15.93s | Langsam | 0 | 0 | 0.0 |  |
+| 1080x1080p50_libx264_high_yuv420p_bt709_gop100_bit3650k_lcaac_160k_48k_2ch_en.mp4 | 1080x1080 | h264 | 9.04s | OK | 15.66s | Langsam | 0 | 0 | 0.0 |  |
+| 1080x1920p50_libx264_high_yuv420p_bt709_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | 1080x1920 | h264 | 9.04s | OK | 23.41s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_libx264_high_yuv420p_bt709_gop50_bit3584k_lcaac_160k_48k_2ch_en.mp4 | 1280x720 | h264 | 9.08s | OK | 15.73s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p25_libx264_high_yuv420p_bt709_gop50_bit5M_lcaac_160k_48k_2ch_en.mp4 | 1280x720 | h264 | 9.08s | OK | 15.93s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit3584k_lcaac_160k_48k_2ch_en.mp4 | 1280x720 | h264 | 9.04s | OK | 15.40s | Langsam | 0 | 0 | 0.0 |  |
+| 1280x720p50_libx264_high_yuv420p_bt709_gop100_bit5M_lcaac_160k_48k_2ch_en.mp4 | 1280x720 | h264 | 9.04s | OK | 14.81s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p50_libx264_high_yuv420p_bt709_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | 1920x1080 | h264 | 9.04s | OK | 23.05s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-hlg10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | 1920x1080 | hevc | 9.04s | OK | 62.77s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-pq10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | 1920x1080 | hevc | 9.04s | OK | 63.15s | Langsam | 0 | 0 | 0.0 |  |
+| 1920x1080p50_libx265_main10_yuv420p10le_bt2020-sdr10_gop100_bit6500k_lcaac_160k_48k_2ch_en.mp4 | 1920x1080 | hevc | 9.04s | OK | 69.98s | Langsam | 0 | 0 | 0.0 |  |
+| 270x270p25_libx264_baseline_yuv420p_bt709_gop50_bit144k_lcaac_96k_48k_2ch_en.mp4 | 270x270 | h264 | 9.00s | OK | 16.69s | Langsam | 0 | 0 | 0.0 |  |
+| 270x480p25_libx264_baseline_yuv420p_bt709_gop50_bit256k_lcaac_64k_48k_2ch_en.mp4 | 270x480 | h264 | 9.00s | OK | 14.78s | Langsam | 0 | 0 | 0.0 |  |
+| 360x360p25_libx264_main_yuv420p_bt709_gop50_bit576k_lcaac_160k_48k_2ch_en.mp4 | 360x360 | h264 | 9.08s | OK | 14.87s | Langsam | 0 | 0 | 0.0 |  |
+| 360x640p25_libx264_main_yuv420p_bt709_gop50_bit1024k_lcaac_160k_48k_2ch_en.mp4 | 360x640 | h264 | 9.08s | OK | 14.77s | Langsam | 0 | 0 | 0.0 |  |
+| 3840x2160p50_libx264_high_yuv420p_bt709_gop100_bit10M_lcaac_160k_48k_2ch_en.mp4 | 3840x2160 | h264 | 9.04s | Fehler | 38.83s | Langsam | 0 | 0 | 0.0 | Exit-Code: 2.  |
+| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-hlg10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | 3840x2160 | hevc | 9.04s | Fehler | 40.10s | Langsam | 0 | 0 | 0.0 | Exit-Code: -9.  |
+| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-pq10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | 3840x2160 | hevc | 9.04s | Fehler | 68.98s | Langsam | 0 | 0 | 0.0 | Exit-Code: -9.  |
+| 3840x2160p50_libx265_main10_yuv420p10le_bt2020-sdr10_gop100_bit7500k_lcaac_160k_48k_2ch_en.mp4 | 3840x2160 | hevc | 9.04s | Fehler | 43.50s | Langsam | 0 | 0 | 0.0 | Exit-Code: -9.  |
+| 480x270p25_libx264_baseline_yuv420p_bt709_gop50_bit256k_lcaac_128k_48k_2ch_en.mp4 | 480x270 | h264 | 9.00s | OK | 21.29s | Langsam | 0 | 0 | 0.0 |  |
+| 512x288p25_libx264_main_yuv420p_bt709_gop50_bit512k_lcaac_160k_48k_2ch_en.mp4 | 512x288 | h264 | 9.08s | OK | 16.72s | Langsam | 0 | 0 | 0.0 |  |
+| 540x540p25_libx264_main_yuv420p_bt709_gop50_bit1150k_lcaac_160k_48k_2ch_en.mp4 | 540x540 | h264 | 9.08s | OK | 14.99s | Langsam | 0 | 0 | 0.0 |  |
+| 540x960p25_libx264_main_yuv420p_bt709_gop50_bit1800k_lcaac_160k_48k_2ch_en.mp4 | 540x960 | h264 | 9.08s | OK | 14.96s | Langsam | 0 | 0 | 0.0 |  |
+| 640x360p25_libx264_main_yuv420p_bt709_gop50_bit1024k_lcaac_160k_48k_2ch_en.mp4 | 640x360 | h264 | 9.08s | OK | 14.92s | Langsam | 0 | 0 | 0.0 |  |
+| 720x1280p25_libx264_high_yuv420p_bt709_gop50_bit3584k_lcaac_160k_48k_2ch_en.mp4 | 720x1280 | h264 | 9.08s | OK | 15.05s | Langsam | 0 | 0 | 0.0 |  |
+| 720x1280p50_libx264_high_yuv420p_bt709_gop100_bit5M_lcaac_160k_48k_2ch_en.mp4 | 720x1280 | h264 | 9.04s | OK | 15.01s | Langsam | 0 | 0 | 0.0 |  |
+| 720x720p25_libx264_high_yuv420p_bt709_gop50_bit2250k_lcaac_160k_48k_2ch_en.mp4 | 720x720 | h264 | 9.08s | OK | 14.96s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p25_libx264_main_yuv420p_bt709_gop50_bit2500k_lcaac_160k_48k_2ch_en.mp4 | 960x540 | h264 | 9.08s | OK | 14.93s | Langsam | 0 | 0 | 0.0 |  |
+| 960x540p50_libx264_main_yuv420p_bt709_gop100_bit2500k_lcaac_160k_48k_2ch_en.mp4 | 960x540 | h264 | 9.04s | OK | 14.91s | Langsam | 0 | 0 | 0.0 |  |
 
 ### Attribution
 *   **Author of modifications:** Martin Schmalohr

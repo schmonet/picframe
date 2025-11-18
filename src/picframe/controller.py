@@ -6,6 +6,7 @@ import signal
 import sys
 import ssl
 import os
+import subprocess
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v')
 
 
@@ -89,8 +90,10 @@ class Controller:
                     if is_video:
                         self.__logger.info("Next item is a video. Handing off to video player.")
                         self.__logger.info(f"Playing video: {pics[0].fname}")
+                        
                         self.__model.save_resume_state() # Save state for file AFTER this video
-                        self.__viewer.play_video(pics[0].fname) # Play video without blocking pi3d re-init
+                        # Play video. The viewer is now responsible for cleaning up the console *after* playback.
+                        self.__viewer.play_video(pics[0].fname) 
                         exit_code = 10 # Special exit code to signal restart
                         self.keep_looping = False
                         break # Exit loop to allow service restart

@@ -1,19 +1,18 @@
 #!/bin/bash
 
-# This script acts as a watcher for the picframe application.
-# It runs picframe in a loop, allowing it to be restarted after
-# certain events (like video playback) without terminating the service.
-
 # Navigate to the directory of the script to ensure correct relative paths
 cd "$(dirname "$0")/.."
 
+export PICFRAME_RESTART_CODE=0 # Initial exit code
 while true; do
-  # Run the picframe application using its virtual environment
+  # Run the picframe application.
+  # The python script will read the PICFRAME_RESTART_CODE environment variable.
   venv/bin/picframe
-  EXIT_CODE=$?
+  RESTART_CODE=$?
 
-  # Exit the watcher script if picframe exited with any code other than 10
-  if [ $EXIT_CODE -ne 10 ]; then
-    exit $EXIT_CODE
+  # Exit the watcher script if picframe exited with any code other than 10 (video restart)
+  if [ $RESTART_CODE -ne 10 ]; then
+    exit $RESTART_CODE
   fi
+  export PICFRAME_RESTART_CODE=$RESTART_CODE
 done
