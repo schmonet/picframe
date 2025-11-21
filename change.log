@@ -1,4 +1,23 @@
-2025-10-10
+2024-05-24
+----------
+
+- **Erstellung von `test/test_bulk_video_player.py`:**
+  - Ein neues Python-Skript wurde entwickelt, um die Videowiedergabe systematisch zu testen und die Performance verschiedener Video-Dateien zu bewerten.
+  - Das Skript findet alle Videos im Verzeichnis `test/videos/`, spielt sie mit `mpv` ab und sammelt detaillierte Logs.
+  - Metadaten wie Codec, Auflösung und Dauer werden mit `ffprobe` ausgelesen.
+  - Die Ergebnisse werden in einer übersichtlichen Markdown-Tabelle zusammengefasst, die Metriken wie effektive FPS, Laufzeit und Fehlerdetails enthält.
+
+- **Fehlerbehebung und Verfeinerung von `test_bulk_video_player.py`:**
+  - Implementierung der Auslesung der Display-Bildwiederholrate aus `/sys/kernel/debug/dri/0/state`, was die Notwendigkeit von `sudo`-Rechten mit sich brachte.
+  - Behebung eines Problems, bei dem `mpv` unter `sudo` den GPU-Kontext nicht initialisieren konnte.
+  - Untersuchung und Lösung von Performance-Problemen, die durch verschiedene `mpv`-Parameter (`--vo=drm`, `--hwdec=auto`) und Umgebungsvariablen (`DISPLAY=:0`) verursacht wurden.
+  - Nach mehreren Iterationen wurde die Komplexität reduziert. Die finale, stabile Lösung erfordert, das Skript direkt mit `sudo` auszuführen und `mpv` mit minimalen Parametern aufzurufen, damit es die optimale Konfiguration für die Hardware-Beschleunigung selbstständig finden kann.
+
+- **Dokumentation:**
+  - `Readme.md` wurde um eine Beschreibung von `test_bulk_video_player.py` und `test_bulk_video_player.log` erweitert.
+  - Diese `change.log`-Datei wurde erstellt, um die jüngsten Entwicklungen zu dokumentieren.
+
+  2025-10-10
 - Enhanced `scripts/check_pic_dates.sh` to support video files (`mkv`, `mp4`, etc.).
 - The script now reads creation date metadata from video containers using `exiftool`, in addition to image EXIF data.
 - Refactored `scripts/sync_photos.sh` to support separate storage quotas for photos and videos within a single cache.
