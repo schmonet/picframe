@@ -1,0 +1,34 @@
+# Farbcodes für Grau und Weiß definieren
+GRAY_BACKGROUND="303030" # Dunkelgrau
+WHITE_TEXT="FFFFFF"      # Weiß für Text und Cursor
+
+# Die Befehle, die in die .bashrc eingefügt werden sollen
+SCRIPT_BLOCK=$(cat <<EOF
+# --- TTY-Farbanpassung (Start) ---
+# Prüfen, ob die Shell auf der lokalen Konsole (TTY) läuft.
+# SSH-Sitzungen bleiben unberührt.
+if [ "\$TERM" = "linux" ] && tty | grep -q "/dev/tty[0-9]"; then
+    # Ändert die TTY-Farbpalette:
+    # 1. Index 0 (Standard Schwarz/Hintergrund) auf Dunkelgrau setzen
+    printf "\e]P0${GRAY_BACKGROUND}"
+    # 2. Index 7 (Standard Weiß/Vordergrund) auf reines Weiß setzen
+    printf "\e]P7${WHITE_TEXT}"
+    
+    # 3. Setzt die Console auf Standard-Hintergrund (Index 0 = Grau) und 
+    #    Standard-Vordergrund (Index 7 = Weiß).
+    #    Der Code \e[8] speichert diese als neue Standardeinstellungen der TTY.
+    #    Der Cursor wird automatisch die Farbe des Vordergrunds (Weiß) annehmen.
+    printf '\e[40;37m\e[8]'
+fi
+# --- TTY-Farbanpassung (Ende) ---
+EOF
+)
+
+# Überprüfen, ob der Block bereits existiert, um Doppelungen zu vermeiden
+if ! grep -q "TTY-Farbanpassung (Start)" ~/.bashrc; then
+    # Den Skript-Block ans Ende der .bashrc anhängen
+    echo "$SCRIPT_BLOCK" >> ~/.bashrc
+    echo "✅ TTY-Farbskript erfolgreich zur ~/.bashrc hinzugefügt."
+else
+    echo "⚠️ TTY-Farbskript ist bereits in der ~/.bashrc vorhanden."
+fi
