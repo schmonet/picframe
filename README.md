@@ -139,6 +139,35 @@ This repository is a fork of the original [picframe by helgeerbe](https://github
 
 ---
 
+### Required Settings for Headless Operation with Pi3D
+
+To run PicFrame successfully on a headless Raspberry Pi (i.e., without a desktop environment like X11 or Wayland), the following settings are crucial. They ensure that the Pi3D graphics library uses the correct video driver (KMS/DRM) instead of searching for a non-existent graphical display.
+
+*   **In `/boot/config.txt`:**
+    *   The KMS (Kernel Mode Setting) video driver must be activated. Ensure this line is present and not commented out:
+        ```
+        dtoverlay=vc4-kms-v3d
+        ```
+
+*   **In `/boot/cmdline.txt`:**
+    *   It is highly recommended to explicitly set the video mode for your connected display. Add the following to the single line in this file (adjust resolution and refresh rate as needed):
+        ```
+        video=HDMI-A-1:1920x1080@50
+        ```
+
+*   **In your `configuration.yaml`:**
+    *   You must configure PicFrame to use the correct Pi3D backend.
+        *   `use_glx:` must be set to `false`. This prevents Pi3D from trying to use the GLX extension, which requires an X-Server.
+        *   `use_sdl2:` must be set to `true`. This enables the SDL2 backend, which can render directly to the hardware framebuffer.
+        ```yaml
+        viewer:
+          use_glx: false
+          use_sdl2: true
+        ```
+
+**Important:** If these settings are not configured correctly, Pi3D cannot find a valid display and will fail to start. This typically results in an OpenGL-related error message in the logs, such as the one we encountered: `AssertionError: Couldnt open DISPLAY None`.
+
+
 ## System Scripts and Logging 🛠️
 
 * `watcher.sh` is a **wrapper for picframe**; it starts `picframe` as a service after boot and runs in the background.
@@ -205,14 +234,29 @@ This file is the "memory" of `picframe` and has a dual function:
 
 #### 3. Special Behavior for Videos
 
-Stable video playback is achieved through a controlled restart of the application:
+To handle videos without compromising the stability of the `pi3d` graphics engine, two distinct methods are supported.
 
-1.  **Detection:** `picframe` detects that the next file is a video.
-2.  **Set Bookmark:** It calls `save_resume_state()` to write the path of the *next* file to the last line of `shown_albums.log`.
-3.  **Play Video:** The external player `mpv` is started and plays the video in full-screen mode.
-4.  **Exit with Signal:** After the video, `picframe` exits itself with the special **Exit Code 10**.
-5.  **Restart by Watcher:** The `watcher.sh` service, which monitors `picframe`, detects exit code 10 and immediately restarts the application. All other exit codes would terminate the service.
-6.  **Resumption:** On restart, `picframe` reads the bookmark from `shown_albums.log`, finds the corresponding file in the album's playlist, and resumes the slideshow exactly at that point.
+##### Method 1: Full Video Playback with `mpv` (Default)
+
+Stable playback of entire video files is achieved through a controlled restart of the application:
+
+*   **Detection:** `picframe` determines that the next file in the playlist is a video.
+*   **Set Bookmark:** It saves the path of the *next* image file (the one that should come after the video) to the state file `shown_albums.log`.
+*   **Play Video:** The external player `mpv` is started and plays the video in full-screen mode.
+*   **Exit with Signal:** After the video, `picframe` exits itself with the special **Exit Code 10**.
+*   **Restart by Watcher:** The `watcher.sh` script, which monitors `picframe`, detects exit code 10 and immediately restarts the application. All other exit codes would terminate the service.
+*   **Resumption:** On restart, `picframe` reads the bookmark from `shown_albums.log`, finds the corresponding file in the playlist, and resumes the slideshow exactly at that point.
+
+##### Method 2: Video Slideshow with `ffmpeg` (Alternative)
+
+This method treats videos not as movies, but as a sequence of still images that are seamlessly blended into the slideshow. This completely avoids application restarts.
+
+*   **External Preprocessing:** A separate, external script (`video_preprocessor.py`) runs in the background.
+*   **Find Videos:** This script scans the image directories for video files.
+*   **Extract Frames:** For each new video, it uses `ffmpeg` to extract individual frames at regular intervals (e.g., every 10 seconds).
+*   **Save as Images:** The extracted frames are saved as standard `.jpg` files in a dedicated subfolder (e.g., `MyVideo.mp4_frames/`).
+*   **Automatic Discovery:** The main `picframe` application is "video-blind". It automatically discovers the new folder of images via its existing `ImageCache` mechanism.
+*   **Seamless Integration:** The extracted frames are treated like normal photos and are integrated into the regular slideshow with cross-fading effects, but excluding Ken Burns.
 
 ---
 
@@ -397,6 +441,72 @@ Hiding Console on HDMI during Video-Image Transition
 | hdr | 720x720p25_libx264_high_yuv420p_bt709_gop50_bit2250k_lcaac_160k_48k_2ch_en.mp4 | 720x720 | h264 | High@3.1 | 25.00 | 9.08s | 227 | OK | 12.92s | 9.08s | OK | 25.0 | 0.00 |  |
 | hdr | 960x540p25_libx264_main_yuv420p_bt709_gop50_bit2500k_lcaac_160k_48k_2ch_en.mp4 | 960x540 | h264 | Main@3.1 | 25.00 | 9.08s | 227 | OK | 12.98s | 9.08s | OK | 25.0 | 0.00 |  |
 | hdr | 960x540p50_libx264_main_yuv420p_bt709_gop100_bit2500k_lcaac_160k_48k_2ch_en.mp4 | 960x540 | h264 | Main@3.1 | 50.00 | 9.04s | 452 | OK | 12.72s | 8.99s | OK | 50.3 | 0.00 |  |
+
+
+### Neue Aufgabe: Video-Integration als externer Vorverarbeitungsprozess
+
+Unser Ziel ist es, Videos nahtlos als eine Serie von überblendeten Einzelbildern in die Diashow zu integrieren, ohne die Stabilität von `picframe` zu gefährden. Nachdem direkte Integrationsversuche fehlgeschlagen sind, verfolgen wir nun einen robusteren, externen Ansatz (der "Postboten-Ansatz").
+
+**Kernprinzip:** Strikte Trennung der Aufgaben.
+*   `picframe` ist ausschließlich für die Anzeige von **Bildern** zuständig.
+*   Ein neuer, separater Prozess ist für die Umwandlung von **Videos in Bilder** verantwortlich.
+
+**Die Vorgehensweise in Stichpunkten:**
+
+1.  **`picframe` bereinigen:**
+    *   Alle Code-Änderungen, die mit der direkten Verarbeitung von Videos (z.B. `.mp4`, `.mov`) zu tun haben, werden aus dem `picframe`-Kern (insbesondere aus `image_cache.py`, `controller.py`, `viewer_display.py`) entfernt.
+    *   `picframe` wird "video-blind" gemacht. Es erkennt und verarbeitet nur noch Bilddateien wie `.jpg`, `.png` etc.
+
+2.  **Neues, externes Skript (`video_preprocessor.py`):**
+    *   Dieses Skript wird als eigenständiger Prozess im Hintergrund laufen (z.B. über einen `cronjob` oder einen eigenen `systemd`-Dienst).
+    *   **Aufgabe 1: Videos finden:** Das Skript durchsucht die Bilderverzeichnisse (`pic_dir`) nach Videodateien.
+    *   **Aufgabe 2: Frames extrahieren:** Für jedes gefundene Video, das noch nicht verarbeitet wurde, ruft es `ffmpeg` auf.
+    *   **Aufgabe 3: Bilder speichern:** Es extrahiert in regelmäßigen Abständen (z.B. alle 10 Sekunden) ein Einzelbild aus dem Video und speichert dieses als `.jpg`-Datei in einem dedizierten Unterordner (z.B. `MeinUrlaub.mp4_frames/`).
+    *   **Aufgabe 4: Wiederholung vermeiden:** Das Skript merkt sich, welche Videos bereits verarbeitet wurden, um Doppelarbeit zu vermeiden (z.B. durch Prüfung, ob der `_frames`-Ordner bereits existiert).
+
+3.  **Integration in die Diashow:**
+    *   Der laufende `picframe`-Prozess bemerkt durch seinen `ImageCache`-Mechanismus, dass ein neuer Ordner mit neuen Bildern erschienen ist.
+    *   Er behandelt diese extrahierten Frames wie ganz normale Fotos, fügt sie seiner Datenbank hinzu und nimmt sie in die Diashow-Rotation auf.
+
+**Vorteile dieses Ansatzes:**
+*   **Stabilität:** Der `picframe`-Prozess wird niemals durch `ffmpeg`-Aufrufe gestört. Der `pi3d`-Startkonflikt wird vollständig vermieden.
+*   **Performance:** Die rechenintensive Video-Konvertierung kann mit niedriger Priorität im Hintergrund laufen und beeinträchtigt die flüssige Darstellung der Diashow nur minimal.
+*   **Einfachheit:** Wir nutzen die existierende, robuste Funktionalität von `picframe` zur Erkennung neuer Dateien, anstatt komplexe neue Logik in den Kern zu integrieren.
+
+### Chronik der Implementierungsversuche
+
+Hier ist eine Tabelle, die unsere bisherigen Versuche und die Gründe für deren Scheitern zusammenfasst.
+
+| Versuch-Nr. | Ansatz | Implementierungsidee | Grund des Scheiterns |
+| :--- | :--- | :--- | :--- |
+| 1 | **Direkte Integration** | Der `ImageCache` sollte beim Scannen der Dateien Metadaten von Videos (`Dauer`, `Auflösung`) mit `ffprobe` auslesen und in der Datenbank speichern. | **Race Condition beim Start:** Der `ImageCache`-Thread startete `ffprobe` (einen `subprocess`) *bevor* `pi3d` in `start.py` das Display initialisieren konnte. Dieser `subprocess` störte das Grafik-Subsystem und führte zum sofortigen Absturz (`... has no attribute 'context'`). |
+| 2 | **"Just-in-Time"-Ansatz** | Der `ImageCache` sollte Videos nur erkennen, aber keine Metadaten auslesen. Erst wenn ein Video an der Reihe ist, sollte der `Viewer` `ffprobe` aufrufen, um die Dauer zu ermitteln und dann die Frames zu extrahieren. | **Immer noch Start-Konflikt:** Obwohl die Logik verschoben wurde, waren die `import`-Anweisungen für `subprocess` und die zugehörigen Funktionen noch im Code vorhanden. Allein das Laden dieser Module beim Start schien auszureichen, um den `pi3d`-Initialisierungsprozess auf dem Pi Zero zu stören. Wir kamen nie dazu, die "Just-in-Time"-Logik tatsächlich zu testen. |
+| 3 | **Optimierung der Startreihenfolge** | Wir haben `start.py` so umgebaut, dass `pi3d.Display.create()` als allererster Schritt ausgeführt wird, noch vor dem Logging und der Erstellung des `Model`-Objekts (und damit des `ImageCache`-Threads). | **Import-Zeit-Konflikte:** Selbst mit der korrekten Reihenfolge schlug der Start fehl. Die Ursache war, dass `start.py` `viewer_display.py` importieren musste. Diese Datei wiederum importierte `subprocess`. Allein der `import`-Vorgang an sich, noch bevor eine Funktion aufgerufen wird, erzeugte den Konflikt. |
+| 4 | **Vollständige Bereinigung** | Wir haben versucht, alle Video-bezogenen Änderungen aus allen Dateien (`image_cache`, `controller`, `viewer_display`, `get_image_meta`, `start`) zu entfernen, um zu einem stabilen Zustand zurückzukehren. | **Übersehene Code-Reste:** Bei der manuellen Bereinigung blieben einzelne, von uns eingeführte Zeilen (wie ein hartcodiertes `self.__use_sdl2 = False`) oder falsche Import-Reihenfolgen in den Dateien zurück, die den Start weiterhin verhinderten und zu leicht unterschiedlichen, aber im Kern gleichen Fehlermeldungen führten. |
+
+**Zusammenfassende Erkenntnis:** Jegliche Form von `subprocess`-Aufrufen oder sogar deren `import`-Vorbereitung innerhalb des `picframe`-Hauptprozesses ist auf der Zielhardware (Pi Zero) zu instabil und führt zu einem nicht behebbaren Konflikt mit der `pi3d`-Grafikinitialisierung. Die Entkopplung in einen komplett separaten Prozess ist daher der einzig logische und vielversprechende nächste Schritt.
+
+## 📝 Summary of TTY Color Change Attempts
+
+### Original Goal
+* **Objective:** Permanently change the **background color** of the entire local **Console (TTY1) on Raspberry Pi OS Bookworm Lite** (HDMI display) from **Black to Grey**.
+* **Requirement 1:** The **login prompt** and last boot messages must be made **invisible** (Foreground color = Background color).
+* **Requirement 2:** Remote **SSH shells** must **not** be affected (must retain default colors).
+* **Constraint:** The color change must be **permanent** and visible **before the login prompt**.
+
+---
+
+### Solution Attempts and Results
+
+| Attempt | Method & Commands | Target/Location of Change | Result | Reason for Failure (if applicable) |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | `setterm` & ANSI Palette Codes | `~/.bashrc` (After login only) | **Unsuccessful** | Executes only after login; only changes lines actively written to. |
+| **2** | Separate Systemd Service (Timing Issue) | `/etc/systemd/system/` (`Before=getty.target`) | **Unsuccessful** | Command executes too early and is immediately overridden by TTY initialization. |
+| **3** | TTY Initialization Modification via `getty` Drop-in (`ExecStartPre`) | `/etc/systemd/system/getty@tty1.service.d/` | **Unsuccessful** | Color is reset by `agetty` or the Framebuffer right before the prompt is displayed. |
+| **4** | Kernel Palette Override (`COLOR_MAP`) | `/etc/default/console-setup` (with `update-initramfs`) | **Unsuccessful** | Kernel/Graphics firmware reloads default colors after `initramfs` stage. |
+| **5** | **Partial Success** (Delayed Systemd Service) | `/etc/systemd/system/tty-color-fix.service` (`After=getty.target`, `sleep 2`) | **Partially Successful** | **Background** permanently Grey. Last log lines/prompt are visible and scrolled up. |
+| **6** | **Final Solution** (Aggressive Scrolling) | `tty-color-fix.service` (`sleep 2` + `setterm -clear` + **50 invisible newlines**) | **Successful** | **Entire screen** is Grey/Blank. Unwanted text is pushed out of the visible viewport. |
+
 
 ### Attribution
 *   **Author of modifications:** Martin Schmalohr

@@ -177,3 +177,34 @@
 - [x] **Consolidate Installation:**
     - [x] Update `install.sh` to include all necessary system and Python dependencies.
     - [x] Create a `requirements.txt` for clear dependency management.
+
+### Wie test_video_player.py funktioniert
+
+1.  **Argumente parsen:** Das Skript nimmt Ihre gewünschten Parameter `--sec-per-frame` und `--blend-ratio` entgegen.
+2.  **Videos finden:** Es durchsucht das Verzeichnis `test/videos` nach allen gängigen Videodateien.
+3.  **`ffmpeg` als Generator:** Die Funktion `extract_frames` startet für jedes Video einen `ffmpeg`-Prozess im Hintergrund. Der Clou ist die Option `-f image2pipe`, die `ffmpeg` anweist, die extrahierten Frames nicht auf die Festplatte zu schreiben, sondern direkt in einen Datenstrom (`stdout`), den unser Python-Skript lesen kann. Dies ist sehr speicherschonend und vermeidet unnötige Schreib-/Lesezugriffe auf die SD-Karte.
+4.  **`pi3d` Setup:** Es werden ein Display und zwei `pi3d.Sprite`-Objekte erstellt. Wir brauchen zwei, um einen weichen Übergang zu ermöglichen: `back_slide` (das aktuell sichtbare Bild) und `front_slide` (das nächste Bild, das eingeblendet wird). Beide nutzen den `blend_new`-Shader, den Sie bereits aus `picframe` kennen.
+5.  **Die Hauptschleife:**
+   *   Das Skript liest einen Frame aus dem `ffmpeg`-Datenstrom.
+   *   Die Rohdaten werden mit `io.BytesIO` und `PIL.Image.open` zu einem Bildobjekt im Speicher verarbeitet.
+   *   Daraus wird eine `pi3d.Texture` erstellt.
+   *   Diese neue Textur wird dem `front_slide` zugewiesen.
+   *   In einer kleinen Schleife wird der Alpha-Wert (Durchsichtigkeit) des `front_slide` über die berechnete `blend_time` von 0.0 auf 1.0 animiert. `pi3d` zeichnet dabei kontinuierlich beide Sprites, und der Shader erledigt die Magie des Überblendens.
+   *   Nach der Überblendung wird die `hold_time` abgewartet, in der nur das neue Bild sichtbar ist.
+   *   Anschließend werden die Rollen der Sprites getauscht (`front_slide` wird zu `back_slide`), und der Prozess beginnt für den nächsten Frame von vorn.
+
+### Voraussetzungen und Ausführung
+
+1.  **`ffmpeg` installieren:** Stellen Sie sicher, dass `ffmpeg` auf Ihrem Pi installiert ist:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install ffmpeg
+   ```
+2.  **Testvideos:** Legen Sie eine oder mehrere Videodateien in das Verzeichnis `picframe/test/videos`.
+3.  **Skript ausführen:**
+   Navigieren Sie in Ihr `picframe`-Verzeichnis und führen Sie das Skript mit den gewünschten Parametern aus. Zum Beispiel mit Ihren Werten:
+   ```bash
+   cd /home/schmali/picframe
+   venv/bin/python test/test_video_slide_show.py --sec-per-frame 10 --blend-ratio 0.1
+   ```
+   Dies extrahiert alle 10 Sekunden einen Frame und verwendet 1 Sekunde (`10s * 0.1`) für die Überblendung.

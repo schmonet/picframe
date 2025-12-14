@@ -224,3 +224,74 @@ Date: 2025-11-09
   - **Versuch 8 (Stabil):** Entfernung aller manuellen Bildschirmsteuerungen. Ergebnis: Stabile Funktion, aber sichtbare Konsole beim Übergang.
   - **Versuch 9 (Fehlgeschlagen):** Einsatz von `setterm` zur Färbung der Konsole. Funktionierte zunächst, war aber nach einem System-Neustart instabil.
   - **Versuch 11 (Erfolgreich):** Gezielter Einsatz von `dd if=/dev/zero` als finale Lösung (siehe 2025-11-18).
+
+  ### 30. November 2023
+
+**Ziel: Stabile Video-Integration als Frame-Sequenz (Alternative zu mpv)**
+
+*   **Versuch 1: Direkte Integration in `ImageCache`**
+    *   **Änderung:** `image_cache.py` wurde angepasst, um Videos zu erkennen und Metadaten mit `ffprobe` zu extrahieren.
+    *   **Ergebnis:** Fehlgeschlagen. `picframe` stürzte beim Start mit `CRITICAL: Failed to create pi3d display` ab.
+    *   **Grund:** Der `subprocess`-Aufruf von `ffprobe` im `ImageCache`-Thread verursachte eine Race Condition mit der `pi3d`-Initialisierung.
+
+*   **Versuch 2: "Just-in-Time" Frame-Extraktion**
+    *   **Änderung:** Die Video-Logik wurde von `image_cache.py` in `viewer_display.py` verschoben, um Frames erst bei Bedarf zu extrahieren.
+    *   **Ergebnis:** Fehlgeschlagen. Der `pi3d`-Startkonflikt blieb bestehen.
+    *   **Grund:** Allein der `import subprocess` zur Ladezeit in `viewer_display.py` reichte aus, um die `pi3d`-Initialisierung zu stören.
+
+*   **Versuch 3: Vollständige Bereinigung und Neustrukturierung**
+    *   **Änderung:** Mehrere Versuche, alle Video-bezogenen Änderungen aus `image_cache.py`, `controller.py`, `viewer_display.py`, `get_image_meta.py` und `start.py` zu entfernen, um einen stabilen Zustand wiederherzustellen.
+    *   **Ergebnis:** Fehlgeschlagen. Es traten weiterhin verschiedene `AttributeError` beim `pi3d`-Start auf (`... has no attribute 'context'` oder `... has no attribute 'display'`).
+    *   **Grund:** Eine Kaskade von subtilen Problemen:
+        1.  Übersehene Code-Reste (z.B. ein hartcodiertes `use_sdl2 = False`).
+        2.  Falsche Startreihenfolge in `start.py`, bei der das `Model` vor dem `Viewer` initialisiert wurde.
+        3.  Import-Zeit-Konflikte, bei denen das Laden von Modulen wie `model` oder `viewer_display` (die wiederum `subprocess` oder `threading` importierten) den `pi3d`-Start störte.
+
+*   **Strategiewechsel: Externer Vorverarbeitungsprozess**
+    *   **Änderung:** Die Erkenntnis, dass jede Form von `subprocess`-Aufruf innerhalb des `picframe`-Prozesses instabil ist, führte zu einem neuen Plan.
+    *   **Dokumentation:** Die neue Strategie (externes Skript `video_preprocessor.py`) und die Chronik der Fehlversuche wurden in `README.md` dokumentiert.
+    *   **Ergebnis:** Dies ist der aktuelle, vielversprechende Plan für die weitere Entwicklung.
+
+*   **Versuch 5: Radikale Bereinigung und Isolation**
+    *   **Änderung:** Um Import-Konflikte zu lösen, wurde die `DEFAULT_CONFIG` in eine eigene, "saubere" Datei `default_config.py` ausgelagert. `start.py` wurde angepasst, um nur noch diese Datei und `viewer_display.py` zu importieren, bevor das Display erstellt wird. Der Import des `model`-Moduls wurde so weit wie möglich nach hinten verschoben.
+    *   **Ergebnis:** Fehlgeschlagen. Der Fehler `CRITICAL: Failed to create pi3d display: 'DisplayOpenGL' object has no attribute 'display'` blieb bestehen.
+    *   **Grund:** Die letzte verbleibende Ursache wurde identifiziert: Der `import subprocess` an der Spitze von `viewer_display.py` "vergiftete" die Umgebung für `pi3d` bereits beim Laden des Moduls.
+
+*   **Versuch 6: Später Import von `subprocess`**
+    *   **Änderung:** Der `import subprocess` wurde aus dem globalen Scope von `viewer_display.py` entfernt und stattdessen direkt in die Methoden verschoben, die ihn benötigen.
+    *   **Ergebnis:** Fehlgeschlagen. Keine Änderung am Fehlerbild.
+    *   **Grund:** An diesem Punkt wurde klar, dass die Kette von Abhängigkeiten und Seiteneffekten bei der Initialisierung zu komplex und fragil ist, um sie innerhalb des `picframe`-Prozesses zuverlässig zu lösen.
+
+*   **Strategiewechsel: Externer Vorverarbeitungsprozess**
+    *   **Änderung:** Die Erkenntnis, dass jede Form von `subprocess`-Aufruf innerhalb des `picframe`-Prozesses instabil ist, führte zu einem neuen Plan.
+    *   **Dokumentation:** Die neue Strategie (externes Skript `video_preprocessor.py`) und die Chronik der Fehlversuche wurden in `README.md` dokumentiert.
+    *   **Ergebnis:** Dies ist der aktuelle, vielversprechende Plan für die weitere Entwicklung.
+
+### 29. November 2023
+
+**Ziel: Den `pi3d`-Startkonflikt umgehen**
+
+*   **Versuch 3: "Just-in-Time" Frame-Extraktion**
+    *   **Änderung:** Die Video-Logik wurde von `image_cache.py` in `viewer_display.py` verschoben. Die Idee war, Frames erst bei Bedarf zu extrahieren, lange nachdem `pi3d` initialisiert wurde.
+    *   **Ergebnis:** Fehlgeschlagen. Der `pi3d`-Startkonflikt blieb bestehen.
+    *   **Grund:** Es wurde erkannt, dass nicht nur der Aufruf von `subprocess`, sondern bereits der `import` des Moduls zur Ladezeit des Programms den Konflikt auslöst.
+
+*   **Versuch 4: Optimierung der Startreihenfolge**
+    *   **Änderung:** `start.py` wurde grundlegend umgebaut, um `pi3d.Display.create()` als allerersten Schritt auszuführen, noch vor dem Logging und der Erstellung des `Model`-Objekts.
+    *   **Ergebnis:** Fehlgeschlagen. Es traten weiterhin verschiedene `AttributeError` beim `pi3d`-Start auf (`... has no attribute 'context'` oder `... has no attribute 'display'`).
+    *   **Grund:** Eine Kaskade von subtilen Problemen wurde aufgedeckt:
+        1.  Übersehene Code-Reste (z.B. ein hartcodiertes `use_sdl2 = False`).
+        2.  Import-Zeit-Konflikte, bei denen das Laden von Modulen wie `model` oder `viewer_display` (die wiederum `subprocess` oder `threading` importierten) den `pi3d`-Start störte.
+
+### 28. November 2023 (und früher)
+
+**Ziel: Stabile Video-Integration als Frame-Sequenz (Alternative zu mpv)**
+
+*   **Versuch 1: Direkte Integration in `ImageCache`**
+    *   **Änderung:** `image_cache.py` wurde angepasst, um Videos zu erkennen und Metadaten (Dauer, Auflösung) mit `ffprobe` zu extrahieren.
+    *   **Ergebnis:** Fehlgeschlagen. `picframe` stürzte beim Start mit `CRITICAL: Failed to create pi3d display` ab.
+    *   **Grund:** Der `subprocess`-Aufruf von `ffprobe` im `ImageCache`-Thread verursachte eine Race Condition mit der `pi3d`-Initialisierung.
+
+*   **Versuch 2: Manuelle Konfigurationsanpassungen**
+    *   **Änderung:** Diverse Anpassungen in der `configuration.yaml`, um `use_sdl2` und andere Grafik-Parameter zu testen.
+    *   **Ergebnis:** Fehlgeschlagen. Keine dieser Änderungen konnte den fundamentalen Konflikt zwischen `subprocess` und `pi3d` beim Start beheben.

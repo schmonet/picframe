@@ -1,0 +1,192 @@
+import argparse
+import subprocess
+import io
+import os
+import time
+import pi3d
+from PIL import Image
+import numpy as np
+
+# --- Konfiguration ---
+VIDEO_DIR = os.path.join(os.path.dirname(__file__), 'videos')
+TEST_IMAGE_PATH = "/home/schmali/picframe/test/images/noimage.jpg"
+SHADER_PATH = "/home/schmali/picframe/src/picframe/data/shaders/blend_new"
+
+def get_video_files(directory):
+    """Sucht nach Videodateien in einem Verzeichnis."""
+    supported_extensions = ['.mp4', '.mov', '.avi', '.mkv']
+    video_files = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if any(file.lower().endswith(ext) for ext in supported_extensions):
+                video_files.append(os.path.join(root, file))
+    print(f"Gefundene Videos: {video_files}")
+    return video_files
+
+def get_video_duration(video_path):
+    """Ermittelt die Dauer eines Videos in Sekunden mit ffprobe."""
+    command = [
+        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+    ]
+    try:
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return float(result.stdout)
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        print(f"Warnung: Konnte die Dauer für {video_path} nicht ermitteln.")
+        return 0.0
+
+def extract_frame_at_time(video_path, time_sec):
+    """Extrahiert einen einzelnen Frame und gibt ihn als PNG-Daten zurück."""
+    command = [
+        'ffmpeg', '-ss', str(time_sec), '-i', video_path, '-vframes', '1',
+        '-f', 'image2pipe', '-vcodec', 'png', '-'
+    ]
+    try:
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=True)
+        return result.stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(f"Fehler beim Extrahieren des Frames bei {time_sec}s für {video_path}")
+        return None
+
+def create_texture_from_data(data):
+    """Erstellt eine pi3d Textur aus Bilddaten (entweder Pfad oder Bytes)."""
+    try:
+        pil_image = Image.open(data)
+        pil_image = pil_image.convert("RGBA")
+        tex_arr = np.array(pil_image)
+        # Die Parameter hier sind entscheidend und aus test_show_image.py abgeleitet
+        return pi3d.Texture(tex_arr, blend=True, m_repeat=False, free_after_load=True)
+    except Exception as e:
+        print(f"Fehler beim Erstellen der Textur: {e}")
+        return None
+
+def create_fit_sprite(texture, display_width, display_height, camera, shader):
+    """Erstellt einen neuen, passend skalierten Sprite."""
+    tex_w, tex_h = texture.ix, texture.iy
+    if tex_w == 0 or tex_h == 0: return None
+
+    scale = min(display_width / tex_w, display_height / tex_h)
+    sprite = pi3d.Sprite(camera=camera, w=tex_w * scale, h=tex_h * scale, z=2.1)
+    
+    # Kompatible Methode zum Setzen der Shader-Parameter
+    sprite.unif[18] = 0.0 # blend
+    sprite.unif[19] = 1.0 # brightness
+    sprite.unif[20] = 0.0 # unused
+    
+    # Methode 1:1 aus picframe kopiert: Shader und Textur getrennt zuweisen.
+    sprite.set_shader(shader)
+    sprite.set_textures([texture])
+    return sprite
+
+def main(sec_per_frame, blend_ratio):
+    """Hauptfunktion zur Steuerung der Video-Diashow."""
+    blend_time = sec_per_frame * blend_ratio
+    hold_time = sec_per_frame - blend_time
+    print(f"Zeit pro Bild: {sec_per_frame}s (davon {blend_time:.2f}s Überblendung, {hold_time:.2f}s Standzeit)")
+
+    # 1:1 Kopie der Display-Erstellung aus test_show_image.py
+    display = pi3d.Display.create(
+        use_sdl2=True,
+        background=(0.0, 0.0, 0.0, 1.0),
+        frames_per_second=20,
+        display_config=pi3d.DISPLAY_CONFIG_HIDE_CURSOR | pi3d.DISPLAY_CONFIG_NO_FRAME,
+        use_glx=False
+    )
+    W, H = display.width, display.height
+
+    shader = pi3d.Shader(SHADER_PATH)
+    camera = pi3d.Camera(is_3d=False)
+    
+    back_slide = None
+    front_slide = None
+
+    try:
+        # --- Test: Zeige ein statisches Bild für 5 Sekunden an ---
+        print("Zeige statisches Testbild für 5 Sekunden an...")
+        tex = create_texture_from_data(TEST_IMAGE_PATH)
+        if tex:
+            back_slide = create_fit_sprite(tex, W, H, camera, shader)
+            back_slide.set_alpha(1.0)
+            
+            start_time = time.time()
+            while display.loop_running() and (time.time() - start_time < 5.0):
+                back_slide.draw()
+                if pi3d.Keyboard().read() == 27: raise KeyboardInterrupt
+                time.sleep(0.02)
+            print("Testbild-Anzeige beendet.")
+
+        # --- Hauptlogik ---
+        video_files = get_video_files(VIDEO_DIR)
+        if not video_files:
+            print("Keine Videodateien im Verzeichnis 'test/videos' gefunden.")
+            raise StopIteration
+
+        is_first_frame_after_test = (back_slide is None)
+
+        for video_file in video_files:
+            duration = get_video_duration(video_file)
+            if duration == 0: continue
+
+            print(f"Verarbeite Video: {os.path.basename(video_file)} (Dauer: {duration:.2f}s)")
+
+            for time_in_video in range(0, int(duration), int(sec_per_frame)):
+                print(f"  Extrahiere Frame bei {time_in_video}s...")
+                frame_data = extract_frame_at_time(video_file, time_in_video)
+                if not frame_data: continue
+
+                tex = create_texture_from_data(io.BytesIO(frame_data))
+                if not tex: continue
+
+                # --- Anzeige und Überblendung ---
+                if is_first_frame_after_test:
+                    back_slide = create_fit_sprite(tex, W, H, camera, shader)
+                    back_slide.set_alpha(1.0)
+                    is_first_frame_after_test = False
+                else:
+                    front_slide = create_fit_sprite(tex, W, H, camera, shader)
+                    front_slide.set_alpha(0.0)
+                    
+                    start_time = time.time()
+                    while time.time() - start_time < blend_time:
+                        alpha = (time.time() - start_time) / blend_time
+                        front_slide.set_alpha(alpha)
+                        
+                        display.loop_running()
+                        if back_slide: back_slide.draw()
+                        front_slide.draw()
+                        
+                        if pi3d.Keyboard().read() == 27: raise KeyboardInterrupt
+                        time.sleep(0.01)
+
+                    front_slide.set_alpha(1.0)
+                    back_slide = front_slide
+                    front_slide = None
+
+                # Standzeit
+                start_time = time.time()
+                while time.time() - start_time < hold_time:
+                    display.loop_running()
+                    # KORREKTUR: Immer beide Sprites zeichnen, auch wenn einer unsichtbar ist.
+                    if back_slide: back_slide.draw()
+                    if front_slide: front_slide.draw() # Wichtig für den Shader
+                    if pi3d.Keyboard().read() == 27: raise KeyboardInterrupt
+                    time.sleep(0.02)
+
+    except (KeyboardInterrupt, StopIteration):
+        print("Programm beendet.")
+    finally:
+        if 'display' in locals() and display.is_running:
+            display.destroy()
+            print("Anzeige geschlossen.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Spielt Videos als Diashow aus extrahierten Frames ab.")
+    parser.add_argument('--sec-per-frame', type=float, default=10.0, help="Sekunden zwischen extrahierten Frames.")
+    parser.add_argument('--blend-ratio', type=float, default=0.1, help="Verhältnis der Überblendzeit (z.B. 0.1 für 10%%).")
+    args = parser.parse_args()
+
+    if not 0.0 < args.blend_ratio <= 1.0:
+        raise ValueError("blend-ratio muss zwischen 0.0 (exklusiv) und 1.0 (inklusiv) liegen.")
+
+    main(args.sec_per_frame, args.blend_ratio)
