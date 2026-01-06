@@ -258,6 +258,19 @@ This method treats videos not as movies, but as a sequence of still images that 
 *   **Automatic Discovery:** The main `picframe` application is "video-blind". It automatically discovers the new folder of images via its existing `ImageCache` mechanism.
 *   **Seamless Integration:** The extracted frames are treated like normal photos and are integrated into the regular slideshow with cross-fading effects, but excluding Ken Burns.
 
+### Video Playback Configuration
+
+PicFrame uses `ffmpeg` to extract frames from videos for seamless integration into the 3D slideshow. You can tune the performance and quality with the following options in `configuration.yaml` under the `model` section:
+
+*   **`video_slideshow_quality`**: (int, default: 6) Controls the quality of the extracted JPEG frames. The range is 2-31, where lower numbers mean higher quality (and larger file sizes).
+*   **`video_slideshow_temp_dir`**: (string, optional) Path to a directory for temporary frame storage. If not set, the system temporary directory is used. Using a RAM disk or fast storage is recommended to reduce SD card wear.
+*   **`video_slideshow_step_time`**: (float, default: 10.0) Time in seconds between extracted keyframes.
+*   **`video_slideshow_time_delay`**: (float, default: 4.0) How long each extracted frame is displayed.
+
+**Hardware Acceleration:**
+The system automatically attempts to use hardware acceleration (`h264_v4l2m2m`) on Raspberry Pi for H.264 content to minimize CPU usage.
+
+
 ---
 
 #### 4. Dynamic Cache Management
@@ -344,19 +357,20 @@ This table summarizes the results of testing different command-line video player
 
 Hiding Console on HDMI during Video-Image Transition
 
-| Versuch Nr. | Methode | Ziel | Ergebnis | Status |
+| Attempt No. | Method | Goal | Result | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | `dd` mit großem Block (`bs=...`) | Bildschirm vor/nach Video mit einer Farbe füllen. | `[Errno 32] Broken pipe`, grauer Balken am oberen Rand. | ❌ Fehlgeschlagen |
-| 2 | `dd` als Stream (ohne `bs`) | `BrokenPipeError` umgehen. | Funktionierte vor dem Video, aber `BrokenPipeError` trat nach dem Video auf. | ❌ Fehlgeschlagen |
-| 3 | `dd` mit temporärer Datei in `/dev/shm` | `BrokenPipeError` nach dem Video umgehen. | `KeyError: 'RGBA'` durch falsche Verwendung von `img.save()`. | ❌ Fehlgeschlagen |
-| 4 | `dd` mit korrekter temporärer Datei | `KeyError` beheben. | `dd` schlug mit `exit status 1` fehl. | ❌ Fehlgeschlagen |
-| 5 | `dd` mit Option `conv=notrunc` | `dd` robuster machen. | `dd` schlug weiterhin mit `exit status 1` fehl. | ❌ Fehlgeschlagen |
-| 6 | Python `open()` statt `dd` | `dd`-Fehler umgehen. | `[Errno 28] No space left on device` beim Schreiben in `/dev/shm`. | ❌ Fehlgeschlagen |
-| 7 | Direktschreiben in `/dev/fb0` mit Python | Temporäre Datei und Speicherplatzfehler umgehen. | `[Errno 28] No space left on device` (wahrscheinlich ein Pipe-Problem). | ❌ Fehlgeschlagen |
-| 8 | **Radikale Vereinfachung** | Alle manuellen Färbeversuche entfernen und auf den Neustart von `pi3d` vertrauen. | Alle Fehler behoben. Übergang ist die normale, sichtbare Konsole. | ✅ Stabil, aber kosmetisch nicht ideal |
-| 9 | `setterm` in `watcher.sh` | Die schwarze Konsole an die `pi3d`-Hintergrundfarbe anpassen. | Funktionierte zunächst, verursachte aber Probleme nach einem System-Neustart. | ❌ Nicht zuverlässig |
-| 10 | **Rückkehr zur stabilen Lösung** | `setterm`-Befehle entfernen. | Wiederherstellung des stabilen Zustands von Versuch 8. | ✅ Stabil, aber kosmetisch nicht ideal |
-| 11 | `dd if=/dev/zero` in `viewer_display.py` | Konsole vor/nach Video schwarz schalten, um Text zu verbergen. | `dd` schlägt fehl, aber der Nebeneffekt ist ein schwarzer Bildschirm, der die Konsole verdeckt. | ✅ **Funktionierendes Feature** |
+| 1 | `dd` with large block (`bs=...`) | Fill screen with a color before/after video. | `[Errno 32] Broken pipe`, grey bar at the top edge. | ❌ Failed |
+| 2 | `dd` as stream (without `bs`) | Bypass `BrokenPipeError`. | Worked before the video, but `BrokenPipeError` occurred after the video. | ❌ Failed |
+| 3 | `dd` with temporary file in `/dev/shm` | Bypass `BrokenPipeError` after the video. | `KeyError: 'RGBA'` due to incorrect use of `img.save()`. | ❌ Failed |
+| 4 | `dd` with correct temporary file | Fix `KeyError`. | `dd` failed with `exit status 1`. | ❌ Failed |
+| 5 | `dd` with option `conv=notrunc` | Make `dd` more robust. | `dd` continued to fail with `exit status 1`. | ❌ Failed |
+| 6 | Python `open()` instead of `dd` | Bypass `dd` errors. | `[Errno 28] No space left on device` when writing to `/dev/shm`. | ❌ Failed |
+| 7 | Direct writing to `/dev/fb0` with Python | Bypass temporary file and space errors. | `[Errno 28] No space left on device` (likely a pipe issue). | ❌ Failed |
+| 8 | **Radical Simplification** | Remove all manual coloring attempts and rely on `pi3d` restart. | All errors resolved. Transition is the normal, visible console. | ✅ Stable, but cosmetically not ideal |
+| 9 | `setterm` in `watcher.sh` | Match black console to `pi3d` background color. | Worked initially, but caused issues after a system reboot. | ❌ Not reliable |
+| 10 | **Return to Stable Solution** | Remove `setterm` commands. | Restoration of the stable state from Attempt 8. | ✅ Stable, but cosmetically not ideal |
+| 11 | `dd if=/dev/zero` in `viewer_display.py` | Turn console black before/after video to hide text. | `dd` fails, but the side effect is a black screen covering the console. | ✅ **Working Feature** |
+
 
 ### Display Eigenschaften
 
@@ -443,48 +457,81 @@ Hiding Console on HDMI during Video-Image Transition
 | hdr | 960x540p50_libx264_main_yuv420p_bt709_gop100_bit2500k_lcaac_160k_48k_2ch_en.mp4 | 960x540 | h264 | Main@3.1 | 50.00 | 9.04s | 452 | OK | 12.72s | 8.99s | OK | 50.3 | 0.00 |  |
 
 
-### Neue Aufgabe: Video-Integration als externer Vorverarbeitungsprozess
+### New Task: Video Integration as External Preprocessing Process
 
-Unser Ziel ist es, Videos nahtlos als eine Serie von überblendeten Einzelbildern in die Diashow zu integrieren, ohne die Stabilität von `picframe` zu gefährden. Nachdem direkte Integrationsversuche fehlgeschlagen sind, verfolgen wir nun einen robusteren, externen Ansatz (der "Postboten-Ansatz").
+Our goal is to seamlessly integrate videos as a series of cross-faded still images into the slideshow without compromising the stability of `picframe`. After direct integration attempts failed, we are now pursuing a more robust, external approach (the "Postman Approach").
 
-**Kernprinzip:** Strikte Trennung der Aufgaben.
-*   `picframe` ist ausschließlich für die Anzeige von **Bildern** zuständig.
-*   Ein neuer, separater Prozess ist für die Umwandlung von **Videos in Bilder** verantwortlich.
+**Core Principle:** Strict separation of concerns.
+*   `picframe` is solely responsible for displaying **images**.
+*   A new, separate process is responsible for converting **videos to images**.
 
-**Die Vorgehensweise in Stichpunkten:**
+**The Procedure in Key Points:**
 
-1.  **`picframe` bereinigen:**
-    *   Alle Code-Änderungen, die mit der direkten Verarbeitung von Videos (z.B. `.mp4`, `.mov`) zu tun haben, werden aus dem `picframe`-Kern (insbesondere aus `image_cache.py`, `controller.py`, `viewer_display.py`) entfernt.
-    *   `picframe` wird "video-blind" gemacht. Es erkennt und verarbeitet nur noch Bilddateien wie `.jpg`, `.png` etc.
+1.  **Clean up `picframe`:**
+    *   All code changes related to the direct processing of videos (e.g., `.mp4`, `.mov`) will be removed from the `picframe` core (specifically from `image_cache.py`, `controller.py`, `viewer_display.py`).
+    *   `picframe` will be made "video-blind". It will only recognize and process image files like `.jpg`, `.png`, etc.
 
-2.  **Neues, externes Skript (`video_preprocessor.py`):**
-    *   Dieses Skript wird als eigenständiger Prozess im Hintergrund laufen (z.B. über einen `cronjob` oder einen eigenen `systemd`-Dienst).
-    *   **Aufgabe 1: Videos finden:** Das Skript durchsucht die Bilderverzeichnisse (`pic_dir`) nach Videodateien.
-    *   **Aufgabe 2: Frames extrahieren:** Für jedes gefundene Video, das noch nicht verarbeitet wurde, ruft es `ffmpeg` auf.
-    *   **Aufgabe 3: Bilder speichern:** Es extrahiert in regelmäßigen Abständen (z.B. alle 10 Sekunden) ein Einzelbild aus dem Video und speichert dieses als `.jpg`-Datei in einem dedizierten Unterordner (z.B. `MeinUrlaub.mp4_frames/`).
-    *   **Aufgabe 4: Wiederholung vermeiden:** Das Skript merkt sich, welche Videos bereits verarbeitet wurden, um Doppelarbeit zu vermeiden (z.B. durch Prüfung, ob der `_frames`-Ordner bereits existiert).
+2.  **New, External Script (`video_preprocessor.py`):**
+    *   This script will run as a standalone process in the background (e.g., via a `cronjob` or its own `systemd` service).
+    *   **Task 1: Find Videos:** The script searches the image directories (`pic_dir`) for video files.
+    *   **Task 2: Extract Frames:** For each found video that has not yet been processed, it calls `ffmpeg`.
+    *   **Task 3: Save Images:** It extracts a single frame from the video at regular intervals (e.g., every 10 seconds) and saves it as a `.jpg` file in a dedicated subfolder (e.g., `MyVacation.mp4_frames/`).
+    *   **Task 4: Avoid Repetition:** The script remembers which videos have already been processed to avoid duplication (e.g., by checking if the `_frames` folder already exists).
 
-3.  **Integration in die Diashow:**
-    *   Der laufende `picframe`-Prozess bemerkt durch seinen `ImageCache`-Mechanismus, dass ein neuer Ordner mit neuen Bildern erschienen ist.
-    *   Er behandelt diese extrahierten Frames wie ganz normale Fotos, fügt sie seiner Datenbank hinzu und nimmt sie in die Diashow-Rotation auf.
+3.  **Integration into the Slideshow:**
+    *   The running `picframe` process notices through its `ImageCache` mechanism that a new folder with new images has appeared.
+    *   It treats these extracted frames like normal photos, adds them to its database, and includes them in the slideshow rotation.
 
-**Vorteile dieses Ansatzes:**
-*   **Stabilität:** Der `picframe`-Prozess wird niemals durch `ffmpeg`-Aufrufe gestört. Der `pi3d`-Startkonflikt wird vollständig vermieden.
-*   **Performance:** Die rechenintensive Video-Konvertierung kann mit niedriger Priorität im Hintergrund laufen und beeinträchtigt die flüssige Darstellung der Diashow nur minimal.
-*   **Einfachheit:** Wir nutzen die existierende, robuste Funktionalität von `picframe` zur Erkennung neuer Dateien, anstatt komplexe neue Logik in den Kern zu integrieren.
+**Advantages of this Approach:**
+*   **Stability:** The `picframe` process is never disturbed by `ffmpeg` calls. The `pi3d` startup conflict is completely avoided.
+*   **Performance:** The computationally intensive video conversion can run with low priority in the background and minimally affects the smooth display of the slideshow.
+*   **Simplicity:** We use the existing, robust functionality of `picframe` to detect new files instead of integrating complex new logic into the core.
 
-### Chronik der Implementierungsversuche
+### History of Implementation Attempts
 
-Hier ist eine Tabelle, die unsere bisherigen Versuche und die Gründe für deren Scheitern zusammenfasst.
+Here is a table summarizing our previous attempts and the reasons for their failure.
 
-| Versuch-Nr. | Ansatz | Implementierungsidee | Grund des Scheiterns |
+| Attempt No. | Approach | Implementation Idea | Reason for Failure |
 | :--- | :--- | :--- | :--- |
-| 1 | **Direkte Integration** | Der `ImageCache` sollte beim Scannen der Dateien Metadaten von Videos (`Dauer`, `Auflösung`) mit `ffprobe` auslesen und in der Datenbank speichern. | **Race Condition beim Start:** Der `ImageCache`-Thread startete `ffprobe` (einen `subprocess`) *bevor* `pi3d` in `start.py` das Display initialisieren konnte. Dieser `subprocess` störte das Grafik-Subsystem und führte zum sofortigen Absturz (`... has no attribute 'context'`). |
-| 2 | **"Just-in-Time"-Ansatz** | Der `ImageCache` sollte Videos nur erkennen, aber keine Metadaten auslesen. Erst wenn ein Video an der Reihe ist, sollte der `Viewer` `ffprobe` aufrufen, um die Dauer zu ermitteln und dann die Frames zu extrahieren. | **Immer noch Start-Konflikt:** Obwohl die Logik verschoben wurde, waren die `import`-Anweisungen für `subprocess` und die zugehörigen Funktionen noch im Code vorhanden. Allein das Laden dieser Module beim Start schien auszureichen, um den `pi3d`-Initialisierungsprozess auf dem Pi Zero zu stören. Wir kamen nie dazu, die "Just-in-Time"-Logik tatsächlich zu testen. |
-| 3 | **Optimierung der Startreihenfolge** | Wir haben `start.py` so umgebaut, dass `pi3d.Display.create()` als allererster Schritt ausgeführt wird, noch vor dem Logging und der Erstellung des `Model`-Objekts (und damit des `ImageCache`-Threads). | **Import-Zeit-Konflikte:** Selbst mit der korrekten Reihenfolge schlug der Start fehl. Die Ursache war, dass `start.py` `viewer_display.py` importieren musste. Diese Datei wiederum importierte `subprocess`. Allein der `import`-Vorgang an sich, noch bevor eine Funktion aufgerufen wird, erzeugte den Konflikt. |
-| 4 | **Vollständige Bereinigung** | Wir haben versucht, alle Video-bezogenen Änderungen aus allen Dateien (`image_cache`, `controller`, `viewer_display`, `get_image_meta`, `start`) zu entfernen, um zu einem stabilen Zustand zurückzukehren. | **Übersehene Code-Reste:** Bei der manuellen Bereinigung blieben einzelne, von uns eingeführte Zeilen (wie ein hartcodiertes `self.__use_sdl2 = False`) oder falsche Import-Reihenfolgen in den Dateien zurück, die den Start weiterhin verhinderten und zu leicht unterschiedlichen, aber im Kern gleichen Fehlermeldungen führten. |
+| 1 | **Direct Integration** | The `ImageCache` was supposed to read metadata from videos (`Duration`, `Resolution`) using `ffprobe` while scanning files and save it in the database. | **Race Condition at Startup:** The `ImageCache` thread started `ffprobe` (a `subprocess`) *before* `pi3d` in `start.py` could initialize the display. This `subprocess` interfered with the graphics subsystem and led to an immediate crash (`... has no attribute 'context'`). |
+| 2 | **"Just-in-Time" Approach** | The `ImageCache` was supposed to only detect videos but not read metadata. Only when a video is up next, the `Viewer` should call `ffprobe` to determine the duration and then extract the frames. | **Still Startup Conflict:** Although the logic was moved, the `import` statements for `subprocess` and the associated functions were still present in the code. Merely loading these modules at startup seemed sufficient to disrupt the `pi3d` initialization process on the Pi Zero. We never got to actually test the "Just-in-Time" logic. |
+| 3 | **Optimization of Start Order** | We restructured `start.py` so that `pi3d.Display.create()` is executed as the very first step, even before logging and the creation of the `Model` object (and thus the `ImageCache` thread). | **Import-Time Conflicts:** Even with the correct order, the start failed. The cause was that `start.py` had to import `viewer_display.py`. This file in turn imported `subprocess`. The `import` process itself, even before a function is called, created the conflict. |
+| 4 | **Complete Cleanup** | We tried to remove all video-related changes from all files (`image_cache`, `controller`, `viewer_display`, `get_image_meta`, `start`) to return to a stable state. | **Overlooked Code Remnants:** During manual cleanup, individual lines introduced by us (like a hardcoded `self.__use_sdl2 = False`) or incorrect import orders remained in the files, which continued to prevent startup and led to slightly different but essentially the same error messages. |
 
-**Zusammenfassende Erkenntnis:** Jegliche Form von `subprocess`-Aufrufen oder sogar deren `import`-Vorbereitung innerhalb des `picframe`-Hauptprozesses ist auf der Zielhardware (Pi Zero) zu instabil und führt zu einem nicht behebbaren Konflikt mit der `pi3d`-Grafikinitialisierung. Die Entkopplung in einen komplett separaten Prozess ist daher der einzig logische und vielversprechende nächste Schritt.
+**Summary Finding:** Any form of `subprocess` calls or even their `import` preparation within the main `picframe` process is too unstable on the target hardware (Pi Zero) and leads to an unrecoverable conflict with the `pi3d` graphics initialization. Decoupling into a completely separate process is therefore the only logical and promising next step.
+
+
+## Optimization of Video Slideshow on Raspberry Pi Zero 2
+
+Seamlessly integrating videos as a "slideshow" (frame extraction instead of video player) presents a challenge on hardware with limited RAM (512 MB) and limited I/O bandwidth. The following measures were necessary to achieve smooth playback without stuttering and without system crashes (OOM/Swap).
+
+### Key Findings
+
+*   **I/O Bottleneck:** Simultaneous writing of extracted frames by `ffmpeg` and reading by `pi3d` immediately overloads the SD card. This leads to high `IO-Wait`, blocking the display.
+*   **RAM Bottleneck:** Since GPU and CPU share memory, too many buffered images or inefficient memory management immediately lead to swapping to the SD card (`kswapd0`), which extremely slows down the system.
+*   **Solution:** A combination of strict process prioritization, hardware decoding, and offloading the write load to a separate medium.
+
+### Optimization Measures
+
+| Area | Measure / Command | Effect |
+| :--- | :--- | :--- |
+| **Decoding** | `ffmpeg -c:v h264_v4l2m2m` | Uses the Pi's hardware video unit. Massively relieves the CPU for rendering. |
+| **I/O Priority** | `ionice -c 3` | Sets `ffmpeg` to "Idle" priority. It is only allowed to write when no other process (like the slideshow) is accessing the disk. |
+| **CPU Priority** | `nice -n 19` | Gives `ffmpeg` the lowest CPU priority so that the UI (`pi3d`) always remains smooth. |
+| **Memory** | `pi3d.Texture(..., free_after_load=True)` | Deletes image data from RAM as soon as it has been uploaded to the GPU. Prevents RAM overflow. |
+| **Throttling** | `SIGSTOP` / `SIGCONT` | The script monitors the buffer. If >5 frames are pre-produced, `ffmpeg` is hard paused to free up I/O and RAM cache. |
+| **Quality** | `ffmpeg -q:v 6` | Reduced JPEG quality significantly decreases file size and thus write load, without visible artifacts on the display. |
+| **Scaling** | `flags=bilinear` | Bilinear scaling is significantly faster than bicubic on the Pi Zero. |
+| **Hardware** | **USB Stick (ext4)** | **Crucial:** Offloading the temp directory to a USB stick decouples the write load from the system SD card. |
+
+### Recommended Setup for Pi Zero 2
+
+To operate the video slideshow stably, it is strongly recommended to use a USB stick for temporary files:
+
+1.  Format USB stick with `ext4` (faster/less CPU load than FAT32).
+2.  Mount under e.g., `/mnt/usb`.
+3.  Configuration/Call with `--temp-dir /mnt/usb`.
+
 
 ## 📝 Summary of TTY Color Change Attempts
 
