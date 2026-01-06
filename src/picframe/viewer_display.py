@@ -11,8 +11,10 @@ import numpy as np
 import pi3d  # type: ignore
 from picframe import mat_image, get_image_meta
 from picframe.controller import VIDEO_EXTENSIONS
+from picframe.video_extractor import VideoExtractor
 
 import shlex
+import shutil
 
 # supported display modes for display switch
 dpms_mode = ("unsupported", "pi", "x_dpms")
@@ -144,7 +146,7 @@ class ViewerDisplay:
         self.__fb_height = 1080
         self.__fb_bpp = 32 # bits_per_pixel for RGBA (4 bytes * 8 bits)
         self.__fb_bytes = int(self.__fb_width * self.__fb_height * (self.__fb_bpp / 8))
-
+        
     def _show_black_screen(self):
         self.__logger.info("--- Showing Black Screen via dd ---")
         command = ["dd", "if=/dev/zero", f"of=/dev/fb0", f"bs={self.__fb_bytes}", "count=1"]
@@ -895,3 +897,207 @@ class ViewerDisplay:
         self.__logger.info("Video playback finished.")
         # --- Step 4: Blank the screen AGAIN after video finishes ---
         _blank_screen()
+
+    def play_video_slideshow(self, pic, video_extractor: VideoExtractor, fade_time: float, time_delay: float):
+        video_path = pic.fname
+        self.__logger.info(f"Starting video slideshow for: {video_path}")
+        
+        # Prepare text overlay using the standard method
+        self.__make_text(pic, False)
+        self.__name_tm = 0.0 # Initialize to 0 so text doesn't show during pre-roll/fade-in
+
+        def draw_overlays():
+            self.__draw_overlay()
+            if self.clock_is_on:
+                self.__draw_clock()
+            
+            tm = time.time()
+            if tm < self.__name_tm:
+                if self.__show_text_tm > 0:
+                    dt = 1.0 - (self.__name_tm - tm) / self.__show_text_tm
+                else:
+                    dt = 1.0
+                if dt > 0.995: dt = 1.0
+                ramp_pt = max(4.0, self.__show_text_tm / 4.0)
+                alpha = max(0.0, min(1.0, ramp_pt * (1.0 - abs(1.0 - 2.0 * dt))))
+
+                for block in self.__textblocks:
+                    if block is not None: block.sprite.set_alpha(alpha)
+
+                if self.__text_bkg_hgt and any(block is not None for block in self.__textblocks):
+                    self.__text_bkg.set_alpha(alpha)
+                    self.__text_bkg.draw()
+
+                for block in self.__textblocks:
+                    if block is not None: block.sprite.draw()
+        
+        frames_dir = video_extractor.get_frames_dir(video_path)
+        
+        def get_frame_path(i):
+            return frames_dir / f"frame_{i:04d}.jpg"
+
+        # Wait for first frames
+        wait_start = time.time()
+        while not get_frame_path(2).exists():
+            if time.time() - wait_start > 30: # Timeout
+                self.__logger.warning("Timeout waiting for video frames.")
+                return
+            
+            # Check if extractor has finished (failed or done) without producing frames
+            if not video_extractor.is_in_process(video_path):
+                 # If finished, check if we at least have the first frame
+                 if get_frame_path(1).exists():
+                     self.__logger.info("Video extraction finished early. Starting slideshow with available frames.")
+                     break
+                 else:
+                     self.__logger.warning("Video extraction process stopped without producing required frames.")
+                     return
+
+            if not self.__display.loop_running():
+                self.__logger.info("Display loop stopped while waiting for video frames.")
+                print("DEBUG: Display loop stopped inside play_video_slideshow (waiting for frames).")
+                return
+            
+            # Draw previous image while waiting to avoid black screen freeze
+            if self.__sfg:
+                 self.__slide.set_draw_details(self.__slide.shader, [self.__sfg, self.__sfg])
+                 self.__slide.unif[44] = 1.0 
+                 self.__slide.draw()
+                 draw_overlays()
+            else:
+                 # If no previous image exists (start of app), draw black to keep loop alive
+                 # We need a dummy texture or just draw with blend=0.0 (background)
+                 self.__slide.unif[44] = 0.0 
+                 self.__slide.draw()
+                 draw_overlays()
+            time.sleep(0.05) # Reduce CPU usage while waiting
+
+        tex_b = pi3d.Texture(str(get_frame_path(1)), blend=True, m_repeat=False, mipmap=False, free_after_load=True)
+        
+        # Setup slide for slideshow mode
+        self.__slide.unif[55] = 1.0 # Brightness
+        self.__slide.unif[54] = 0.0 # Mix mode
+        self.__slide.unif[47] = 1.0 # Edge alpha
+        
+        # Reset all texture scaling and offsets to defaults to prevent
+        # artifacts from previous Ken Burns effects (fix for flashing distorted frame)
+        self.__slide.unif[42] = 1.0 # Scale X tex0 (Ken Burns)
+        self.__slide.unif[43] = 1.0 # Scale Y tex0 (Ken Burns)
+        self.__slide.unif[45] = 1.0 # Scale X tex1 (Ken Burns)
+        self.__slide.unif[46] = 1.0 # Scale Y tex1 (Ken Burns)
+        self.__slide.unif[48] = 0.0 # Offset X tex0
+        self.__slide.unif[49] = 0.0 # Offset Y tex0
+        self.__slide.unif[50] = 1.0 # Scale tex0
+        self.__slide.unif[51] = 0.0 # Offset X tex1
+        self.__slide.unif[52] = 0.0 # Offset Y tex1
+        self.__slide.unif[53] = 1.0 # Scale tex1
+        
+        # If we have a previous texture (from image slideshow), blend from it
+        if self.__sfg:
+             self.__slide.set_draw_details(self.__slide.shader, [self.__sfg, tex_b])
+             self.__slide.unif[44] = 1.0
+             start_time = time.time()
+             while True:
+                 t = time.time() - start_time
+                 if t > fade_time: break
+                 if not self.__display.loop_running(): return
+                 blend = t / fade_time
+                 self.__slide.unif[44] = 1.0 - blend
+                 self.__slide.draw()
+                 draw_overlays()
+        
+        self.__slide.set_draw_details(self.__slide.shader, [tex_b, tex_b])
+        self.__slide.unif[44] = 1.0
+        
+        # Start showing text now that the video frames are visible
+        self.__name_tm = time.time() + self.__show_text_tm
+        
+        current_idx = 1
+        ffmpeg_paused = False
+        
+        while True:
+            # 1. Hold current frame
+            start_time = time.time()
+            while (time.time() - start_time) < time_delay:
+                if not self.__display.loop_running():
+                    if ffmpeg_paused: video_extractor.resume()
+                    return
+                self.__slide.draw()
+                draw_overlays()
+
+            # 2. Prepare next frame
+            next_idx = current_idx + 1
+            next_path = get_frame_path(next_idx)
+            lookahead_path = get_frame_path(next_idx + 1)
+            
+            while not lookahead_path.exists():
+                # If we are waiting for frames and ffmpeg is paused, resume it!
+                if ffmpeg_paused:
+                    video_extractor.resume()
+                    ffmpeg_paused = False
+
+                # Check if extraction is finished (no more frames coming)
+                if not video_extractor.is_in_process(video_path):
+                    if not next_path.exists():
+                        # End of video
+                        # Clean up temp dir for this video
+                        try:
+                            shutil.rmtree(frames_dir)
+                        except Exception:
+                            pass
+                        # Keep the last texture as sfg for the next image transition
+                        self.__sfg = tex_b
+                        self.__sbg = None
+                        return
+                    else:
+                        # Next frame exists, but lookahead doesn't. This is the last frame.
+                        break
+                
+                if not self.__display.loop_running():
+                    if ffmpeg_paused: video_extractor.resume()
+                    return
+                self.__slide.draw()
+                draw_overlays()
+                time.sleep(0.05)
+
+            tex_f = tex_b
+            tex_b = pi3d.Texture(str(next_path), blend=True, m_repeat=False, mipmap=False, free_after_load=True)
+            
+            self.__slide.set_draw_details(self.__slide.shader, [tex_f, tex_b])
+            self.__slide.unif[44] = 1.0
+            
+            # 3. Blend
+            start_time = time.time()
+            while True:
+                t = time.time() - start_time
+                if t > fade_time: break
+                if not self.__display.loop_running():
+                    if ffmpeg_paused: video_extractor.resume()
+                    return
+                blend = t / fade_time
+                self.__slide.unif[44] = 1.0 - blend
+                self.__slide.draw()
+                draw_overlays()
+            
+            self.__slide.unif[44] = 0.0
+            self.__slide.draw()
+            draw_overlays()
+            
+            # Throttling: Pause ffmpeg if too many frames are produced in advance
+            if video_extractor.is_in_process(video_path):
+                # If 5 frames exist in advance -> Pause to save RAM/IO
+                if get_frame_path(current_idx + 5).exists() and not ffmpeg_paused:
+                    video_extractor.pause()
+                    ffmpeg_paused = True
+                # If only 2 frames exist in advance -> Continue
+                elif not get_frame_path(current_idx + 2).exists() and ffmpeg_paused:
+                    video_extractor.resume()
+                    ffmpeg_paused = False
+            
+            # 4. Cleanup old frame
+            try:
+                os.remove(get_frame_path(current_idx))
+            except OSError:
+                pass
+            
+            current_idx += 1

@@ -7,6 +7,7 @@ import sys
 import os
 import argparse
 import logging
+import shutil
 from logging.handlers import TimedRotatingFileHandler
 
 from picframe import model, viewer_display, controller, __version__
@@ -65,6 +66,24 @@ def main():
     """
     Main function to run the application.
     """
+    # Fix for running as a systemd service where XDG_RUNTIME_DIR might not be set.
+    # This is often required for display managers like Wayland used by pi3d/SDL2.
+    if 'XDG_RUNTIME_DIR' not in os.environ and sys.platform.startswith('linux'):
+        try:
+            uid = os.getuid()
+            runtime_dir = f'/run/user/{uid}'
+            if os.path.isdir(runtime_dir):
+                os.environ['XDG_RUNTIME_DIR'] = runtime_dir
+                # Use print as logger is not yet configured
+                print(f"INFO: XDG_RUNTIME_DIR not set, automatically set to {runtime_dir}")
+        except Exception as e:
+            print(f"WARNING: Failed to set XDG_RUNTIME_DIR: {e}")
+
+    if shutil.which('ffmpeg') is None:
+        print("WARNING: ffmpeg binary NOT found in PATH!")
+    else:
+        print(f"INFO: ffmpeg found at {shutil.which('ffmpeg')}")
+
     args = get_args()
     config_file = args.config_file if args.config_file else def_config_file
 
@@ -80,7 +99,7 @@ def main():
     # Setup logging
     log_level = model_config.get('log_level', 'INFO').upper()
     log_file = model_config.get('log_file', None)
-    log_to_console = model_config.get('log_to_console', True)
+    log_to_console = True # Force console logging for debugging
     setup_logger(log_level, log_file, log_to_console)
 
     logger = logging.getLogger("start.main")

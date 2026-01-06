@@ -1,3 +1,12 @@
+2025-01-05
+- Feature: Added `video_slideshow_quality` configuration option to control JPEG quality of extracted video frames (lower value = higher quality).
+- Improvement: Enabled hardware acceleration for H.264 video decoding on Raspberry Pi (`h264_v4l2m2m`) in `VideoExtractor`.
+- Improvement: Correct handling of anamorphic videos (non-square pixels) to prevent display distortion; videos are now correctly scaled and padded to the display resolution.
+- Improvement: Implemented smart process throttling for `ffmpeg` to reduce CPU and I/O load by pausing extraction when the frame buffer is sufficiently filled.
+- Fix: Resolved `XDG_RUNTIME_DIR` environment variable issues when running as a systemd service without a desktop environment.
+- Fix: Fixed black screen freezes and transition artifacts during video playback start/stop.
+- Fix: Ensured `ffmpeg` process is correctly paused and resumed to prevent deadlocks in the slideshow loop.
+
 2024-05-24
 ----------
 

@@ -90,6 +90,13 @@ DEFAULT_CONFIG = {
         'delete_after_show': False,
         'group_by_dir': False, # New option
         'resume_from_album_subfolder': '', # New option
+        'video_playback_mode': 'mpv',
+        'video_slideshow_step_time': 10.0,
+        'video_slideshow_fade_time': 2.0,
+        'video_slideshow_time_delay': 4.0,
+        'video_slideshow_pillarbox_pct': 0.0,
+        'video_slideshow_temp_dir': "",
+        'video_slideshow_quality': 6,
         'ffprobe_path': None,
     },
     'mqtt': {

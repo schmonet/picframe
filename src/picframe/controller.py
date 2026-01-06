@@ -7,6 +7,7 @@ import sys
 import ssl
 import os
 import subprocess
+from picframe.video_extractor import VideoExtractor
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v')
 
 
@@ -37,6 +38,8 @@ class Controller:
         self.__interface_peripherals = None
         self.__interface_mqtt = None
         self.__interface_http = None
+        self.__video_extractor = None
+        
 
     @property
     def paused(self):
@@ -88,15 +91,25 @@ class Controller:
                     is_video = os.path.splitext(pics[0].fname)[1].lower() in VIDEO_EXTENSIONS
                     
                     if is_video:
-                        self.__logger.info("Next item is a video. Handing off to video player.")
-                        self.__logger.info(f"Playing video: {pics[0].fname}")
-                        
-                        self.__model.save_resume_state() # Save state for file AFTER this video
-                        # Play video. The viewer is now responsible for cleaning up the console *after* playback.
-                        self.__viewer.play_video(pics[0].fname) 
-                        exit_code = 10 # Special exit code to signal restart
-                        self.keep_looping = False
-                        break # Exit loop to allow service restart
+                        if self.__model.get_model_config()['video_playback_mode'] == 'ffmpeg':
+                            self.__logger.info("Next item is a video. Playing as slideshow.")
+                            self.__video_extractor.extract(pics[0].fname)
+                            conf = self.__model.get_model_config()
+                            self.__viewer.play_video_slideshow(pics[0], self.__video_extractor, 
+                                                               conf['video_slideshow_fade_time'], 
+                                                               conf['video_slideshow_time_delay'])
+                            self.__model.save_current_file_state(pics[0].fname)
+                            self.__next_tm = tm # Reset timer to continue immediately
+                        else:
+                            self.__logger.info("Next item is a video. Handing off to video player.")
+                            self.__logger.info(f"Playing video: {pics[0].fname}")
+                            
+                            self.__model.save_resume_state() # Save state for file AFTER this video
+                            # Play video. The viewer is now responsible for cleaning up the console *after* playback.
+                            self.__viewer.play_video(pics[0].fname) 
+                            exit_code = 10 # Special exit code to signal restart
+                            self.keep_looping = False
+                            break # Exit loop to allow service restart
                     else:
                         self.__force_navigate = False
                         self.__model.save_current_file_state(pics[0].fname) # Always save current image state
@@ -126,6 +139,8 @@ class Controller:
 
 
             if not loop_running:
+                self.__logger.info("Slideshow loop stopped (loop_running=False).")
+                print("DEBUG: Slideshow loop stopped because viewer.slideshow_is_running returned False.")
                 break
             if skip_image:
                 self.__next_tm = 0
@@ -136,6 +151,28 @@ class Controller:
     def start(self):
         self.__viewer.slideshow_start() # Create the pi3d display first
         from picframe.interface_peripherals import InterfacePeripherals
+        
+        # Initialize VideoExtractor here, where we have access to the display dimensions
+        mode = self.__model.get_model_config()['video_playback_mode']
+        self.__logger.info(f"DEBUG: video_playback_mode is configured as: '{mode}'")
+        print(f"DEBUG: video_playback_mode is configured as: '{mode}'")
+        
+        if mode == 'ffmpeg':
+            try:
+                # Ensure even dimensions for ffmpeg
+                dw = self.__viewer.display_width if self.__viewer.display_width % 2 == 0 else self.__viewer.display_width - 1
+                dh = self.__viewer.display_height if self.__viewer.display_height % 2 == 0 else self.__viewer.display_height - 1
+                self.__video_extractor = VideoExtractor(
+                    temp_dir=self.__model.get_model_config()['video_slideshow_temp_dir'],
+                    step_time=self.__model.get_model_config()['video_slideshow_step_time'],
+                    pillarbox_pct=self.__model.get_model_config()['video_slideshow_pillarbox_pct'],
+                    resolution=(dw, dh),
+                    quality=self.__model.get_model_config()['video_slideshow_quality']
+                )
+            except Exception as e:
+                self.__logger.error(f"Failed to initialize VideoExtractor: {e}. Falling back to mpv.")
+                self.__model.get_model_config()['video_playback_mode'] = 'mpv'
+
         self.__interface_peripherals = InterfacePeripherals(self.__model, self.__viewer, self)
 
         # ... (start mqtt and http server as before)
@@ -148,6 +185,8 @@ class Controller:
             self.__interface_mqtt.stop()
         if self.__interface_http:
             self.__interface_http.stop()
+        if self.__video_extractor:
+            self.__video_extractor.stop()
         self.__model.stop_image_chache()
         self.__viewer.slideshow_stop()
 
