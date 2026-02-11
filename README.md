@@ -558,3 +558,202 @@ To operate the video slideshow stably, it is strongly recommended to use a USB s
 ### Attribution
 *   **Author of modifications:** Martin Schmalohr
 *   **AI-assisted development:** Some of the scripts and modifications in this fork were developed with the assistance of Google's Gemini.
+
+## Ken Burns Optimizsation Change Attempts
+
+### Original Goal
+
+Don't waste picture area. Scaling of fotos over size of screen which results in cropping shall not exceed more than required for Ken Burns panning, scrolling and scaling.
+Picture shall fit to screen in either or both directions either on start or end of transition, no matter if random factor is used for each image. 
+
+### Solution Attempts and Results
+
+| Step | Change | Goal | Result / Side Effect | Cause |
+| :--- | :--- | :--- | :--- | :--- |
+| **GitHub** | `scale = base / zoom`<br>`offset = 0.5 - shift` | Original Logic | **Works (in original)** | The original logic is self-consistent but uses "camera shift" (minus). Changing only parts of it breaks consistency. |
+| **1** | `scale = base / kb_scale` | Calculate Zoom | **Tiling** | In our adaptation, a Scale > 1.0 (due to incorrect base calculation) caused texture repetition. |
+| **2** | `scale = view_w` (Value < 1.0) | Fix Tiling | **Distortion / Wrong Pos.** | Scaling was correct (Zoom), but the offset formula did not match the new scaling logic. |
+| **3** | `scale = 1.0 / view_w` | Correct Zoom? | **3x Tiling** | Return to the error of Step 1. A small `view_w` (0.3) inverted leads to Scale 3.3 -> Tiling. |
+| **4** | `offset = 0.5 - shift` | Positioning | **Inverted Movement** | "Scrolling starts at wrong position". The minus (from GitHub logic) did not match our definition of "Start Point". |
+| **Fix** | `scale = view_w`<br>`offset = 0.5 + shift` | Correction | **Correct** | `view_w` (< 1.0) defines the viewport. `+ shift` moves the viewport intuitively in the positive coordinate direction (Start top -> End bottom). |
+
+### Summary of Ken Burns Adjustments in `viewer_display.py`
+
+| Step | Change / Approach | Goal | Result / Observation | Cause of Failure |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | **Virtual Cropping**<br>Limit scroll area mathematically to `portrait_crop_ar`. | Prevent portrait images from scrolling too far. | **Vertical Stripes**<br>Image stretched to a single line. | Incorrect shader uniform indices (`50`/`51` instead of `51`/`52`) for background. |
+| **2** | **Inverse Scaling**<br>Introduced `zoom = 1.0 / kb_scale`. | Correct conversion from "magnification" to "visible area" to prevent tiling. | **Horizontal Stripes**<br>Image stretched horizontally to a line. | Incorrect "Aspect Fill" logic (swapped `image_ar` / `display_ar`) resulted in `scale_y` $\to$ 0. |
+| **3** | **Viewport-based Offsets**<br>Calculations based on `__get_viewport_size()`. | Correct matting (black borders) and offsets. | **Horizontal Stripes**<br>Problem persisted. | Viewport-to-Screen mapping (`view_w_norm`) was inverted, breaking scaling. |
+| **4** | **Safety Clamping**<br>Limited `image_aspect` and `scale` max values. | Prevent extreme scaling from division by zero or bad aspect ratios. | **No Change**<br>Stripes persisted. | Fundamental scaling formula was still flawed. |
+| **5** | **Resize Sprite to Viewport**<br>`pi3d.Sprite` resized to `viewport` dimensions. | Let `pi3d` handle black borders (matting) naturally; simplify shader math. | **3x Tiled Images**<br>Image repeated 3 times horizontally. | Scaling factor `scale_x` was calculated > 1.0 (Tiling). |
+| **6** | **Fix "Aspect Fill" Logic**<br>Swapped formulas for `scale_x` and `scale_y`. | Fix tiling and stretching. | **Stripe Pattern**<br>Image compressed to a line. | Formulas were swapped incorrectly, leading to `scale` $\to$ 0. |
+| **7** | **Revert & Init Uniforms**<br>Reset logic to Step 5, added uniform initialization. | Fix random offsets and artifacts. | **3.5x Tiling**<br>Portrait images tiled horizontally. | Portrait formula `display_ar / image_ar` resulted in value > 1.0. |
+| **8** | **Clamp to 1.0**<br>Added `min(scale, 1.0)`. | Prevent tiling by forcing scale $\le$ 1.0. | **Flickering Patterns**<br>Rapid visual artifacts. | Clamping caused unstable rendering values or conflict with shader. |
+| **9** | **Invert Ratio (Portrait)**<br>Changed to `image_ar / display_ar`. | Fix 3.5x tiling by ensuring factor < 1.0. | **Horizontal Lines**<br>Image compressed to line. | Scale collapsed to ~0 due to logic error or offset calculation. |
+| **10** | **Explicit Aspect Fill**<br>Set `scale_x=1`, `scale_y=ratio` (Portrait). | Mathematically correct "Fill" logic. | **Horizontal Lines**<br>Image compressed to line. | Scale collapsed to ~0. |
+| **11** | **Hard Clamping (0.05)**<br>Added `max(0.05, min(..., 1.0))`. | Prevent 0 (lines) and >1 (tiling). | **Wider Stripes**<br>Brighter center line. | Scale was valid, but **Offsets** pushed the visible area out of the texture (Edge Clamping). |
+| **12** | **Force 1:1 Scale**<br>Set `scale = zoom` (~1.0). | Test if image can be rendered at all. | **Wide/Thin Stripes**<br>Still no image. | Confirmed **Offsets** are the root cause (pushing image out of bounds). |
+| **13** | **Force Center (Zero Offset)**<br>Set `offset = 0.5 * (1.0 - scale)`. | Eliminate offset calculation errors. | **Success**<br>Image visible and centered. | Previous offset calculations were relative to the wrong dimensions or scale. |
+| 14 | **Geometry Scaling:** Switched from shader-based scaling to resizing the sprite geometry. | Eliminate vertical stripes caused by shader precision issues with `scale < 1.0`. | Stripes disappeared. However, image appeared as "rushing patterns" (pixel mush). | Coordinates became astronomically large due to incorrect aspect ratio calculations. |
+| 15 | **Debug Logs:** Added logs for viewport and sprite dimensions. | Diagnose the cause of the pixel mush. | Logs revealed absurdly large viewport dimensions (e.g., width 196,560 pixels). | `viewport_aspect_ratio` was interpreted as ~182.0 instead of ~1.5. |
+| 16 | **Sanity Check (Viewport):** Added sanity checks for aspect ratios. | Prevent application crashes or huge viewports. | Prevented huge viewports. Reset AR to default (16:9), causing aspect ratio mismatches (image wider than viewport). | Configuration values were still being parsed incorrectly, triggering the fallback. |
+| 17 | **Portrait Optimization:** Implemented wobble reserve and virtual crop logic. | Enable correct scrolling for portrait images. | Portrait scrolling logic implemented, but vertical scrolling was stuck (`max_y=0`). | `portrait_crop_to_aspect_ratio` was parsed as ~123.0, resulting in zero scrollable area. |
+| 18 | **Extended Debug Logs:** Added logs for `Final AR`. | Identify the exact values being parsed from config. | Confirmed `screen_aspect_ratio` parsed as `969.0` and `viewport_aspect_ratio` as `182.0`. | YAML 1.1 parser interprets `XX:YY` as base-60 (sexagesimal) integers. |
+| 19 | **Sanity Check (Crops):** Added sanity checks for crop aspect ratios. | Make code robust against bad config values. | Code handled bad config gracefully (ignored crop), but behavior was still not as configured. | Root cause (YAML parsing) still present. |
+| 20 | **Configuration Fix:** Added quotation marks to aspect ratios in `configuration.yaml` (e.g., `"16:9"`). | Force YAML to interpret values as strings. | **Success.** Correct ARs loaded. Display and scrolling work perfectly. | The "Sexagesimal" feature of YAML 1.1 (fixed by quotes). |
+| 21 | **Code Cleanup:** Removed temporary debug logs. | Clean up code for production. | Code clean and stable. | - |
+| 22 | **Re-enable Debug Logs:** Added persistent debug logs (Mode, Scroll Position). | Allow future debugging via log level change. | Detailed logs available for debugging (hidden in INFO/ERROR levels). | - |
+| 23 | **Two-Sprite System:** Implemented separate sprites for background (outgoing) and foreground (incoming) images. | Fix "jumping" artifacts where the old image snapped to the new image's position during transition. | **Smoother Transitions.** Images now move independently. However, "Z-fighting" (flickering) occurred where images overlapped. | Single sprite geometry was shared/overwritten. |
+| 24 | **Z-Separation & Freeze:** Placed background sprite at `z=10.0` and foreground at `z=5.0`. Stopped animating background during fade. | Eliminate flickering and reduce calculation load. | **Stable Transitions.** No flickering. Old image pauses while new one fades in. | - |
+| 25 | **Landscape Pan Correction:** Extended random pan range from `0.0..1.0` to `-1.0..1.0`. | Fix issue where landscape images were always shifted to the right (left edge pinned). | **Centered Movement.** Images now pan in all directions. | Previous logic assumed positive offset only. |
+| 26 | **Targeted Landscape Zoom:** Defined explicit start/end points (Center $\leftrightarrow$ Zoom/Wobble). | Ensure images start or end perfectly centered/fullscreen without black bars. | **Cinematic Look.** Zoom In starts full; Zoom Out ends full. | - |
+| 27 | **Ghosting Fix:** Changed background sprite alpha to `1.0 - smooth_alpha` (cross-fade). | Prevent old image from showing through transparent borders of the new image (aspect ratio mismatch). | **Clean Cut.** Old image disappears completely as new one appears. | Previous logic kept background opaque (`alpha=1.0`) behind the blending foreground. |
+| 28 | **Performance Optimization:** Added image downscaling in `__tex_load` before GPU upload. | Reduce RAM usage and IO wait (swapping) on Raspberry Pi Zero 2. | **Better Performance.** Reduced lag. However, portrait images became blurry. | Naive scaling to display height reduced resolution too much for "Fit Width" portrait images. |
+| 29 | **Smart Downscaling:** Calculated target resolution based on Viewport and Aspect Ratio (Fit Width vs Fit Height). | Maintain sharpness for all aspect ratios while optimizing memory. | **High Quality & Performance.** Portrait images are sharp, memory usage remains low. | - |
+| 30 | **Timer Logic Fix**<br>Reset display timer *after* image load. | Prevent images from being skipped or shown too briefly when loading takes time (IO wait). | **Correct Display Time**<br>Images stay for the configured `time_delay` regardless of loading speed. | Previous logic started timer at load start; heavy images consumed the display time while loading. |
+| 31 | **Time-based Transitions**<br>Decoupled fade progress from framerate. | Ensure transitions take exactly `fade_time` seconds, even if FPS drops to <1 during background loading. | **Constant Transition Speed**<br>No more "slow motion" transitions during high load. | Previous frame-based logic slowed down transitions when CPU was busy. |
+| 32 | **Late Timestamping**<br>Capture transition start time *after* GPU texture upload. | Fix "jumping" transitions where the fade was mathematically over before the first frame was drawn. | **Smooth Start**<br>Transition starts at 0% alpha exactly when the image appears. | Texture upload caused a delay that was counted as part of the transition time. |
+| 33 | **Pre-emptive GC**<br>Force `gc.collect()` before transition starts. | Move inevitable memory cleanup freezes to the invisible loading phase. | **Fluid Animation**<br>Eliminates stuttering during the visible fade effect. | Python's GC would otherwise run randomly during the animation. |
+| 34 | **Panorama Mode**<br>Added dedicated logic for ultra-wide images (`AR > Screen AR`). | Enable horizontal scrolling for panoramas instead of just zooming. | **New Feature**<br>Panoramas scroll left/right; standard landscapes zoom in/out. | - |
+
+
+### Parameter-Beschreibung
+
+* **fit**
+
+  * `true`: Bild wird so skaliert, dass es vollständig sichtbar ist. Es entstehen schwarze Ränder ("Letterboxing" oder "Pillarboxing").
+  * `false`: Bild wird so skaliert, dass es den Bildschirm füllt. Überstehende Teile werden abgeschnitten (Crop).
+  * **Hinweis:** Wird ignoriert, wenn `kenburns: true`.
+
+* **crop_to_aspect_ratio**
+  Erzwingt ein bestimmtes Seitenverhältnis (z.B. `"4:3"` oder `"16:9"`) durch Zuschneiden des Bildes vor der Anzeige.
+
+  * `null` (Standard): Kein erzwungener Zuschnitt.
+
+* **kenburns**
+
+  * `true`: Aktiviert den Ken-Burns-Effekt (sanftes Zoomen und Schwenken). Setzt implizit `fit: false`.
+  * `false`: Statische Anzeige des Bildes.
+
+* **kenburns_zoom_direction** (nur Querformat)
+
+  * `"random"`: Zufällige Wahl zwischen Zoom-In und Zoom-Out.
+  * `"in"`: Bild vergrößert sich (Zoom hinein).
+  * `"out"`: Bild verkleinert sich (Zoom heraus).
+
+* **kenburns_zoom_pct** (nur Querformat)
+  Prozentualer Zoom-Faktor (z.B. `35.0` für 35%). Bestimmt, wie stark hinein- oder herausgezoomt wird.
+
+* **kenburns_landscape_wobble_pct** (nur Querformat)
+  Maximale seitliche/vertikale Verschiebung (Wobble) in Prozent des möglichen Pan-Bereichs, wenn `kenburns_random_pan: true`.
+
+* **kenburns_portrait_wobble_pct** (nur Hochformat)
+  Maximale horizontale Verschiebung in Prozent, um dem Scrollen eine leichte seitliche Bewegung zu geben.
+
+* **kenburns_random_pan**
+
+  * `true`: Fügt dem Zoom (Querformat) oder Scrollen (Hochformat) eine zufällige seitliche Verschiebung hinzu.
+  * `false`: Zoom erfolgt strikt zentriert; Scrollen erfolgt strikt vertikal.
+
+* **kenburns_scroll_direction** (nur Hochformat)
+
+  * `"random"`: Zufällige Wahl zwischen Scrollen nach oben oder unten.
+  * `"up"`: Bild bewegt sich nach oben (Blick wandert von unten nach oben).
+  * `"down"`: Bild bewegt sich nach unten (Blick wandert von oben nach unten).
+
+* **kenburns_portrait_border_pct** (nur Hochformat)
+  Prozentualer Bereich oben und unten, der beim Scrollen ausgespart wird (Start/Ende nicht direkt am Bildrand), um „tote“ Bereiche zu vermeiden oder den Fokus zentraler zu halten.
+
+## Ken Burns Logic & Configuration
+
+### 1. Smart Downscaling (Performance Optimization)
+To ensure smooth performance on hardware with limited RAM (like Raspberry Pi Zero 2) while maintaining high image quality, images are resized **before** being uploaded to the GPU.
+
+*   **Logic:** The system calculates the exact target resolution required to display the image at its maximum zoom level without quality loss (1:1 pixel mapping).
+*   **Calculation:**
+    *   **Viewport Awareness:** Uses the configured `viewport_aspect_ratio` (e.g., "3:2") rather than just the screen resolution.
+    *   **Fit-Width (Portrait on Landscape):** If the image is narrower than the viewport, the target width is calculated as `Viewport Width * (1.0 + Wobble %)`. The height is scaled accordingly.
+    *   **Fit-Height (Landscape on Landscape):** If the image is wider than the viewport but not a panorama, the target height is calculated as `Viewport Height * (1.0 + Zoom %)`. The width is scaled accordingly.
+    *   **Fit-Height (Panorama):** If the image is wider than the screen aspect ratio, the target height is calculated as `Viewport Height * (1.0 + Panorama Zoom %)`. The width is scaled accordingly to allow for horizontal scrolling.
+*   **Result:** Massive reduction in RAM usage and IO-Wait for high-resolution images (e.g., 20MP) without blurring the displayed content.
+
+### 2. Landscape Mode Logic
+Applied when the image aspect ratio is **wider** than the viewport but **narrower** than the screen aspect ratio.
+
+*   **Movement:** Focuses on zooming in or out.
+*   **Zoom In:**
+    *   **Start:** Scale 1.0 (Perfect fit, centered, no cropping).
+    *   **End:** Scale `1.0 + Random(0, zoom_pct)`.
+    *   **Wobble:** If `random_pan` is enabled, the end position shifts slightly off-center (max `landscape_wobble_pct`) to create a dynamic effect.
+*   **Zoom Out:**
+    *   **Start:** Scale `1.0 + Random(0, zoom_pct)`.
+    *   **Wobble:** If `random_pan` is enabled, the start position is slightly off-center (max `landscape_wobble_pct`).
+    *   **End:** Scale 1.0 (Perfect fit, centered, no cropping).
+*   **Goal:** Ensures that every landscape transition starts or ends with the full image visible, avoiding permanent cropping while adding cinematic movement.
+
+### 3. Portrait Mode Logic
+Applied when the image aspect ratio is **narrower** than the viewport aspect ratio.
+
+*   **Movement:** Focuses on vertical scrolling (Panorama effect).
+*   **Scaling:** The image width is fitted to the viewport width (`Fit Width`). The excess height is used for scrolling.
+*   **Scrolling:**
+    *   Moves from Top-to-Bottom or Bottom-to-Top based on `portrait_scroll_direction`.
+    *   **Virtual Cropping:** If `portrait_crop_to_aspect_ratio` is set (e.g., "3:4"), the scrollable area is limited. The system calculates how tall the image *would* be at that aspect ratio and limits the scroll range (`max_y`) to that "virtual" height, ignoring the rest of a very tall panorama.
+*   **Wobble:**
+    *   If `random_pan` is enabled, a slight zoom (`portrait_wobble_pct`) is applied.
+    *   This creates "slack" on the horizontal axis, allowing for a random horizontal drift (Pan X) during the vertical scroll, making the movement feel less robotic.
+
+### 4. Panorama Mode Logic
+Applied when the image aspect ratio is **wider** than the screen aspect ratio.
+
+*   **Movement:** Focuses on horizontal scrolling.
+*   **Scaling:** The image height is fitted to the viewport height (`Fit Height`). The excess width is used for scrolling.
+*   **Scrolling:**
+    *   Moves from Left-to-Right or Right-to-Left based on `kenburns_panorama_scroll_direction`.
+    *   **Virtual Cropping:** If `panorama_crop_to_aspect_ratio` is set (e.g., "3:1"), the scrollable area is limited, similar to the portrait logic.
+*   **Zoom:**
+    *   Can optionally zoom in or out during the scroll based on `kenburns_panorama_zoom_pct`.
+*   **Wobble:**
+    *   If `random_pan` is enabled, a slight vertical drift (Pan Y) is added during the horizontal scroll.
+
+### 5. Configuration Parameters (`configuration.yaml`)
+
+#### Aspect Ratios
+*   **`screen_aspect_ratio`** (e.g., `"16:9"`)
+    *   The physical aspect ratio of the monitor. Used for sanity checks.
+*   **`viewport_aspect_ratio`** (e.g., `"3:2"`)
+    *   **Crucial:** Defines the visible area within the screen (e.g., if a physical mat covers parts of the screen). All Ken Burns calculations (centering, scaling limits) are relative to this ratio, not the full screen.
+*   **`portrait_crop_to_aspect_ratio`** (e.g., `"3:4"`)
+    *   Limits the vertical scroll range for tall portrait images.
+*   **`landscape_crop_to_aspect_ratio`**
+    *   Usually `null` for Ken Burns to allow full usage of the image width.
+*   **`panorama_crop_to_aspect_ratio`** (e.g., `"3:1"`)
+    *   Limits the horizontal scroll range for extremely wide panorama images.
+
+#### Ken Burns Settings
+*   **`kenburns`** (`true`/`false`)
+    *   Master switch. If true, overrides `fit` settings.
+*   **`kenburns_random_pan`** (`true`/`false`)
+    *   Enables the "Wobble" effect (off-center drift) for Landscape, Portrait, and Panorama.
+*   **`kenburns_landscape_zoom_pct`** (float, e.g., `35.0`)
+    *   The maximum percentage an image is zoomed in (or starts zoomed out). `35.0` means max scale 1.35.
+*   **`kenburns_landscape_wobble_pct`** (float, e.g., `10.0`)
+    *   How much the image can drift off-center at the zoomed state (percentage of the available slack).
+*   **`kenburns_landscape_zoom_direction`** (`"random"`, `"in"`, `"out"`)
+    *   Direction of the animation.
+*   **`kenburns_portrait_wobble_pct`** (float, e.g., `8.0`)
+    *   Adds a slight zoom to portrait images to allow for horizontal drifting.
+*   **`kenburns_portrait_scroll_direction`** (`"random"`, `"up"`, `"down"`)
+    *   Direction of the vertical scroll.
+*   **`kenburns_panorama_zoom_pct`** (float, e.g., `10.0`)
+    *   Zoom percentage applied during panorama scrolling.
+*   **`kenburns_panorama_zoom_direction`** (`"random"`, `"in"`, `"out"`)
+    *   Zoom direction for panoramas.
+*   **`kenburns_panorama_scroll_direction`** (`"random"`, `"left"`, `"right"`)
+    *   Direction of the horizontal scroll for panoramas.
+
+#### Transition Settings
+*   **`time_delay`** (float)
+    *   Duration of the Ken Burns effect (how long the image is shown).
+*   **`fade_time`** (float)
+    *   Duration of the cross-fade transition between images.

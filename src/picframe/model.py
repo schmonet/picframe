@@ -29,6 +29,13 @@ DEFAULT_CONFIG = {
         'fit': False,
         'video_fit_display': True,
         'kenburns': False,
+        'kenburns_zoom_pct': 0.2,
+        'kenburns_zoom_direction': "random",
+        'kenburns_random_pan': True,
+        'kenburns_landscape_wobble_pct': 0.05,
+        'kenburns_portrait_wobble_pct': 0.05,
+        'kenburns_scroll_direction': "random",
+        'kenburns_portrait_border_pct': 0.05,
         'display_x': 0,
         'display_y': 0,
         'display_w': None,
@@ -90,6 +97,8 @@ DEFAULT_CONFIG = {
         'delete_after_show': False,
         'group_by_dir': False, # New option
         'resume_from_album_subfolder': '', # New option
+        'playlist_max_albums': 20,
+        'playlist_max_files': 2000,
         'video_playback_mode': 'mpv',
         'video_slideshow_step_time': 10.0,
         'video_slideshow_fade_time': 2.0,
@@ -205,7 +214,7 @@ class Model:
             locale.setlocale(locale.LC_TIME, model_config['locale'])
         except Exception:
             self.__logger.error("error trying to set locale to {}".format(model_config['locale']))
-        self.__pic_dir = os.path.expanduser(model_config['pic_dir'])
+        self.__pic_dir = os.path.normpath(os.path.expanduser(model_config['pic_dir']))
         self.__subdirectory = os.path.expanduser(model_config['subdirectory'])
         self.__load_geoloc = model_config['load_geoloc']
         self.__geo_reverse = geo_reverse.GeoReverse(model_config['geo_key'],
@@ -417,10 +426,10 @@ class Model:
                 # When reloading, the file list might be empty if a new album was just copied
                 # by the watcher but the image_cache hasn't finished processing it yet.
                 # We retry for a few seconds to give the cache time to catch up.
-                max_wait_time = 10 # seconds
-                start_time = time.time()
+                max_retries = 10
+                retry_count = 0
                 self.__logger.info("Reloading file list...")
-                while time.time() - start_time < max_wait_time:
+                while retry_count < max_retries:
                     self.__get_files() # This queries the DB
                     missing_images = 0
                     if self.__number_of_files > 0:
@@ -428,12 +437,22 @@ class Model:
                         break
                     self.__logger.info("Reload attempt found no files. Retrying...")
                     time.sleep(1) # Wait 1 second before retrying
+                    retry_count += 1
                 else: # This 'else' belongs to the 'while' loop, executed if the loop finishes without break
-                    self.__logger.warning("Failed to reload file list after %d seconds. No files found.", max_wait_time)
+                    self.__logger.warning("Failed to reload file list after %d attempts. No files found.", max_retries)
 
             # If we don't have any files to show, prepare the "no images" image
             # Also, set the reload_files flag so we'll check for new files on the next pass...
-            if self.__number_of_files == 0 or missing_images >= self.__number_of_files:
+            if self.__number_of_files == 0:
+                if self.get_model_config()['group_by_dir']:
+                    self.__reload_files = True
+                    continue # Try to load a new album immediately
+                
+                pic1 = Pic(self.__no_files_img, 0, 0)
+                self.__reload_files = True
+                break
+            
+            if missing_images >= self.__number_of_files:
                 pic1 = Pic(self.__no_files_img, 0, 0)
                 self.__reload_files = True
                 break
@@ -466,6 +485,15 @@ class Model:
                 pic2 = None
             if (not pic1 and pic2):
                 pic1, pic2 = pic2, pic1
+
+            # Check for album change (Group by Directory)
+            if self.get_model_config()['group_by_dir'] and pic1:
+                current_dir = os.path.dirname(pic1.fname)
+                if current_dir != self.__current_album_path:
+                    self.__logger.info(f"Switching to album: {current_dir}")
+                    self.__current_album_path = current_dir
+                    self.__shown_albums.add(current_dir)
+                    self.__write_shown_albums_log()
 
             # Increment the image index for next time
             self.__file_index += 1
@@ -508,14 +536,40 @@ class Model:
                     self.__logger.info("Permanently deleted file: %s", f_to_delete)
                     # Immediately remove from image_cache database
                     self.__image_cache.delete_file_from_db(pic.file_id)
+                    
+                    # Try to remove directory if empty
+                    try:
+                        directory = os.path.dirname(f_to_delete)
+                        os.rmdir(directory)
+                        self.__logger.info("Removed empty directory: %s", directory)
+                    except OSError:
+                        pass # Directory not empty or other error
                 else:
                     self.__logger.warning("File not found for deletion: %s", f_to_delete)
             except OSError as e:
                 self.__logger.error("Could not permanently delete file '%s': %s", f_to_delete, e)
         
-        # After deletion, force a reload of the file list to ensure deleted files are not shown again.
-        # This also implicitly handles the removal from the internal __file_list.
-        self.force_reload()
+        # Remove from internal list directly to avoid triggering album switch (force_reload)
+        # The current set of images corresponds to the entry at self.__file_index - 1
+        # (because get_next_file increments index after selecting)
+        idx_to_remove = self.__file_index - 1
+        
+        # Handle wrap around if we just showed the last image
+        if idx_to_remove < 0:
+            idx_to_remove = len(self.__file_list) - 1
+            
+        if 0 <= idx_to_remove < len(self.__file_list):
+            del self.__file_list[idx_to_remove]
+            self.__number_of_files -= 1
+            
+            # If we removed an item before the current pointer, we need to adjust the pointer 
+            # so it points to the correct next item.
+            if self.__file_index > idx_to_remove:
+                self.__file_index -= 1
+            
+            # If album is empty, force reload to get next album immediately
+            if self.__number_of_files == 0 and self.get_model_config()['group_by_dir']:
+                self.__reload_files = True
 
     def save_current_file_state(self, file_path):
         """Writes the path of the currently displayed file to the log."""
@@ -557,61 +611,75 @@ class Model:
         resumed = False # Flag to check if we resumed from a specific file
 
         if group_by_dir:
-            if self.__reload_files and self.__current_album_path:
-                self.__logger.info(f"Album '{self.__current_album_path}' finished. Selecting a new one.")
-                self.__shown_albums.add(self.__current_album_path)
-                self.__write_shown_albums_log()
-                self.__current_album_path = None # Mark as finished to force new selection
+            self.__file_list = []
+            
+            # 1. Get all available albums
+            all_albums = []
+            if os.path.isdir(picture_dir):
+                for year_dir in sorted(os.listdir(picture_dir)):
+                    year_path = os.path.join(picture_dir, year_dir)
+                    if os.path.isdir(year_path):
+                        for loc_dir in sorted(os.listdir(year_path)):
+                            loc_path = os.path.join(year_path, loc_dir)
+                            if os.path.isdir(loc_path):
+                                all_albums.append(loc_path)
+            
+            if not all_albums:
+                self.__logger.warning("No albums found in picture directory.")
+                self.__number_of_files = 0
+                self.__reload_files = False
+                return
 
-            # If no album is selected (or the previous one finished), find and select a new one.
-            if not self.__current_album_path:
-                # First, get a list of all available albums
-                all_albums = []
-                if os.path.isdir(picture_dir):
-                    for year_dir in os.listdir(picture_dir):
-                        year_path = os.path.join(picture_dir, year_dir)
-                        if os.path.isdir(year_path):
-                            for loc_dir in os.listdir(year_path):
-                                loc_path = os.path.join(year_path, loc_dir)
-                                if os.path.isdir(loc_path):
-                                    all_albums.append(loc_path)
-                
-                # Now, decide which album to play
-                resume_file_path = None
-                if self.__resume_file:
-                    resume_file_path = self.__resume_file # Keep a copy
-                    album_of_file = os.path.dirname(self.__resume_file)
-                    if album_of_file in all_albums:
-                        self.__current_album_path = album_of_file
-                        resumed = True
-                        self.__logger.info("Resuming playback in album: %s", self.__current_album_path)
-                    self.__resume_file = None # Consume resume file path
-                
-                if not resumed:
-                    unshown_albums = [album for album in all_albums if album not in self.__shown_albums]
+            # 2. Handle Resume
+            resume_file_path = None
+            resume_album = None
+            if self.__resume_file:
+                resume_file_path = self.__resume_file
+                resume_album = os.path.dirname(self.__resume_file)
+                self.__resume_file = None # Consume
 
-                    if not unshown_albums and all_albums:
-                        self.__logger.info("All albums shown. Resetting shown_albums.log.")
-                        self.__shown_albums.clear() # Clear in-memory set
-                        # Log will be cleared on next write
-                        unshown_albums = all_albums
+            # 3. Determine which albums to load
+            # We want to load a batch of albums.
+            # If resuming, the resume_album MUST be first.
+            
+            unshown_albums = [a for a in all_albums if a not in self.__shown_albums]
+            
+            # If resume_album exists but was marked shown (e.g. crash during last album), allow it.
+            if resume_album and resume_album in all_albums and resume_album not in unshown_albums:
+                pass # It will be added via albums_to_load
 
-                    if unshown_albums:
-                        self.__current_album_path = random.choice(unshown_albums)
-                        self.__logger.info(f"Selected album for playback: {self.__current_album_path}")
-                        self.__shown_albums.add(self.__current_album_path) # Add to in-memory set
-                        self.__write_shown_albums_log()
-                    elif not all_albums:
-                        self.__logger.warning("No unshown albums found.")
-                        self.__file_list = [] # No albums available
-                        self.__number_of_files = 0
-                        self.__file_index = 0
-                        self.__reload_files = False
-                        return
+            albums_to_load = []
+            if resume_album and resume_album in all_albums:
+                albums_to_load.append(resume_album)
+                resumed = True
 
-            # Now, get the sorted file list for the currently selected album.
-            if self.__current_album_path:
-                where_list = [f"fname LIKE '{self.__current_album_path}/%'"]
+            if not unshown_albums and not albums_to_load:
+                self.__logger.info("All albums shown. Resetting shown_albums.log.")
+                self.__shown_albums.clear()
+                unshown_albums = list(all_albums)
+                if resume_album: # Don't duplicate if we just reset
+                    unshown_albums = [a for a in unshown_albums if a != resume_album]
+
+            if shuffle_global:
+                random.shuffle(unshown_albums)
+            albums_to_load.extend(unshown_albums)
+            
+            # 4. Load a batch of albums into the playlist
+            # Loading a batch of albums provides a good buffer for lookahead and reduces scanning frequency.
+            max_albums = model_config.get('playlist_max_albums', 20)
+            max_files = model_config.get('playlist_max_files', 2000)
+            loaded_albums_count = 0
+            
+            self.__logger.info(f"Loading batch of albums (max {max_albums} albums or {max_files} files)...")
+            
+            for album_path in albums_to_load:
+                # Check limits
+                if loaded_albums_count >= max_albums:
+                    break
+                if len(self.__file_list) >= max_files:
+                    break
+
+                where_list = [f"fname LIKE '{album_path}/%'"]
                 where_list.extend(self.__where_clauses.values())
                 where_clause = " AND ".join(where_list)
 
@@ -628,18 +696,39 @@ class Model:
                     sort_list.append("fname ASC")
                 sort_clause = ",".join(sort_list)
 
-                self.__file_list = self.__image_cache.query_cache(where_clause, sort_clause)
-                
-                # If we resumed from a file, find its index and start from there
-                if resumed and resume_file_path:
-                    try:
-                        # Find the index of the file we want to resume FROM in the new file list
-                        file_ids_in_album = [row[0] for row in self.__file_list] # Get all file_ids in the current album order
-                        resume_file_id = self.__image_cache.query_cache(f"fname = '{resume_file_path}'", "1")[0][0] # Get file_id from its path
-                        self.__file_index = file_ids_in_album.index(resume_file_id) # Find the index of that file_id
+                files = self.__image_cache.query_cache(where_clause, sort_clause)
+                if files:
+                    self.__file_list.extend(files)
+                    self.__logger.info(f"Added {len(files)} files from album: {album_path}")
+                    loaded_albums_count += 1
+                else:
+                    # Empty album, mark as shown so we don't try again immediately
+                    self.__shown_albums.add(album_path)
+            
+            self.__logger.info(f"Playlist populated with {len(self.__file_list)} files from {loaded_albums_count} albums.")
+            
+            # 5. Set Index (Resume)
+            if resumed and resume_file_path:
+                try:
+                    # Find the index of the file we want to resume FROM in the new file list
+                    # Note: file_list is a list of tuples (file_id, ...)
+                    # We need to find the file_id corresponding to resume_file_path
+                    resume_file_id_rows = self.__image_cache.query_cache(f"fname = '{resume_file_path}'", "1")
+                    if resume_file_id_rows:
+                        resume_file_id = resume_file_id_rows[0][0]
+                        # Extract just the file_ids from the list for searching
+                        file_ids_in_list = [row[0] for row in self.__file_list]
+                        self.__file_index = file_ids_in_list.index(resume_file_id)
                         self.__logger.info("Resuming at index %d for file %s", self.__file_index, resume_file_path)
-                    except (ValueError, IndexError, TypeError, AttributeError):
-                        self.__logger.warning("Could not find resume file in new file list. Starting album from beginning.")
+                    else:
+                        self.__logger.warning("Resume file not found in DB.")
+                        self.__file_index = 0
+                except (ValueError, IndexError):
+                    self.__logger.warning("Could not find resume file in new file list. Starting from beginning.")
+                    self.__file_index = 0
+            else:
+                self.__file_index = 0
+
         elif not resumed: # Only reset index if not resuming
             self.__file_index = 0
             # Existing logic for non-grouped display (flat list from pic_dir)

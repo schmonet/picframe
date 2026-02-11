@@ -114,8 +114,14 @@ class Controller:
                         self.__force_navigate = False
                         self.__model.save_current_file_state(pics[0].fname) # Always save current image state
                         # It's an image, set the timer for the next change
-                        self.__logger.info("Next item is an image. Displaying.")
-                        self.__next_tm = tm + self.__model.time_delay
+                        orientation = "portrait" if pics[0].is_portrait else "landscape"
+                        fname = os.path.basename(pics[0].fname)
+                        if self.__model.get_viewer_config()['kenburns']:
+                            self.__logger.info(f"Next item is a {orientation} image {fname}. Displaying. Using Ken Burns for {self.__model.time_delay} sec.")
+                        else:
+                            self.__logger.info(f"Next item is a {orientation} image {fname}. Displaying for {self.__model.time_delay} sec.")
+                        # Timer will be reset after slideshow_is_running returns to account for loading time
+                        # self.__next_tm = tm + self.__model.time_delay 
                         # MQTT logic for images
                         image_attr = {}
                         for key in self.__model.get_model_config()['image_attr']:
@@ -136,6 +142,11 @@ class Controller:
             
             (loop_running, skip_image, _) = self.__viewer.slideshow_is_running( # This single call handles both new images and animation
                 pics, time_delay, fade_time, self.__paused)
+
+            if pics and not skip_image:
+                # Reset timer after image has been loaded and displayed.
+                # This ensures time_delay counts viewing time, excluding loading time.
+                self.__next_tm = time.time() + self.__model.time_delay
 
 
             if not loop_running:

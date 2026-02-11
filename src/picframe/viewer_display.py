@@ -5,6 +5,7 @@ import os
 import sys
 import random
 from typing import Optional, List, Tuple
+import threading
 from datetime import datetime
 from PIL import Image, ImageFilter, ImageFile
 import numpy as np
@@ -15,6 +16,7 @@ from picframe.video_extractor import VideoExtractor
 
 import shlex
 import shutil
+import gc
 
 # supported display modes for display switch
 dpms_mode = ("unsupported", "pi", "x_dpms")
@@ -79,22 +81,33 @@ class ViewerDisplay:
         self.__video_fit_display = config['video_fit_display']
         self.__geo_suppress_list = config['geo_suppress_list']
         self.__kenburns = config['kenburns']
-        self.__crop_ar = None
-        if 'crop_to_aspect_ratio' in config and config['crop_to_aspect_ratio']:
-            try:
-                w, h = map(float, config['crop_to_aspect_ratio'].split(':'))
-                if h > 0: self.__crop_ar = w / h
-            except Exception as e:
-                self.__logger.warning("Could not parse crop_to_aspect_ratio: %s", e)
+        
+        # New Aspect Ratio Logic
+        self.__screen_ar = self.__parse_aspect_ratio(config.get('screen_aspect_ratio', '16:9')) or (16/9)
+        self.__viewport_ar = self.__parse_aspect_ratio(config.get('viewport_aspect_ratio', '16:9')) or self.__screen_ar
+        self.__landscape_crop_ar = self.__parse_aspect_ratio(config.get('landscape_crop_to_aspect_ratio'))
+        self.__portrait_crop_ar = self.__parse_aspect_ratio(config.get('portrait_crop_to_aspect_ratio'))
+        
+        # Sanity check crop ARs
+        if self.__landscape_crop_ar and (self.__landscape_crop_ar > 5.0 or self.__landscape_crop_ar < 0.2):
+             self.__logger.warning(f"Sanity Check: Configured landscape_crop_to_aspect_ratio {self.__landscape_crop_ar} is unreasonable. Ignoring.")
+             self.__landscape_crop_ar = None
+             
+        if self.__portrait_crop_ar and (self.__portrait_crop_ar > 5.0 or self.__portrait_crop_ar < 0.2):
+             self.__logger.warning(f"Sanity Check: Configured portrait_crop_to_aspect_ratio {self.__portrait_crop_ar} is unreasonable. Ignoring.")
+             self.__portrait_crop_ar = None
 
         if self.__kenburns:
-            self.__kb_zoom_direction = config.get('kenburns_zoom_direction', 'random')
-            self.__kb_scroll_direction = config.get('kenburns_scroll_direction', 'random')
-            self.__kb_zoom_pct = abs(config.get('kenburns_zoom_pct', 10.0))
+            self.__kb_landscape_zoom_direction = config.get('kenburns_landscape_zoom_direction', 'random')
+            self.__kb_portrait_scroll_direction = config.get('kenburns_portrait_scroll_direction', 'random')
+            self.__kb_landscape_zoom_pct = abs(config.get('kenburns_landscape_zoom_pct', 10.0))
             self.__kb_landscape_wobble_pct = abs(config.get('kenburns_landscape_wobble_pct', 5.0))
             self.__kb_portrait_wobble_pct = abs(config.get('kenburns_portrait_wobble_pct', 5.0))
             self.__kb_random_pan = config.get('kenburns_random_pan', True)
-            self.__kb_portrait_border_pct = abs(config.get('kenburns_portrait_border_pct', 20.0))
+            self.__kb_panorama_zoom_direction = config.get('kenburns_panorama_zoom_direction', 'random')
+            self.__kb_panorama_scroll_direction = config.get('kenburns_panorama_scroll_direction', 'random')
+            self.__kb_panorama_zoom_pct = abs(config.get('kenburns_panorama_zoom_pct', 10.0))
+            self.__panorama_crop_ar = self.__parse_aspect_ratio(config.get('panorama_crop_to_aspect_ratio'))
             self.__kb_current_state = {}
             self.__kb_previous_state = {}
             self.__fit = False
@@ -111,8 +124,10 @@ class ViewerDisplay:
         self.__use_glx = config['use_glx']
         self.__alpha = 0.0  # alpha - proportion front image to back
         self.__delta_alpha = 1.0
+        self.__transition_start_tm = 0.0
         self.__display = None
         self.__slide = None
+        self.__slide_bg = None # Second sprite for background image (Ken Burns)
         self.__background_sprite = None
         self.__flat_shader = None
         self.__textblocks = [None, None]
@@ -146,7 +161,44 @@ class ViewerDisplay:
         self.__fb_height = 1080
         self.__fb_bpp = 32 # bits_per_pixel for RGBA (4 bytes * 8 bits)
         self.__fb_bytes = int(self.__fb_width * self.__fb_height * (self.__fb_bpp / 8))
+        self.__logger.info(f"Picframe FPS: {self.__fps}")
         
+        # Threading for async image loading
+        self.__loading_thread = None
+        self.__loading_result = None
+        self.__next_pics = None
+        
+    def __parse_aspect_ratio(self, ar_str):
+        if not ar_str:
+            return None
+        try:
+            s = str(ar_str)
+            if ':' not in s:
+                return float(s)
+            
+            w, h = map(float, s.split(':'))
+            return w / h if h != 0 else 1.0
+        except Exception:
+            return None
+
+    def __get_viewport_size(self):
+        if self.__display is None:
+             return 0, 0
+        
+        if self.__viewport_ar < self.__screen_ar:
+             # Pillarbox (fit height)
+             vp_h = self.__display.height
+             vp_w = vp_h * self.__viewport_ar
+        else:
+             # Letterbox (fit width) or Match
+             vp_w = self.__display.width
+             vp_h = vp_w / self.__viewport_ar
+
+        if vp_w > 10000 or vp_h > 10000:
+             self.__logger.warning(f"DEBUG: Huge viewport calculated! vp={vp_w}x{vp_h}. Display={self.__display.width}x{self.__display.height}. AR_VP={self.__viewport_ar}, AR_Screen={self.__screen_ar}")
+
+        return vp_w, vp_h
+
     def _show_black_screen(self):
         self.__logger.info("--- Showing Black Screen via dd ---")
         command = ["dd", "if=/dev/zero", f"of=/dev/fb0", f"bs={self.__fb_bytes}", "count=1"]
@@ -351,7 +403,11 @@ class ViewerDisplay:
             diff_aspect = 1 - (screen_aspect / image_aspect)
         return (screen_aspect, image_aspect, diff_aspect)
 
-    def __tex_load(self, pics, size=None):
+    def __prepare_image(self, pics, size=None):
+        """
+        Loads and prepares the PIL Image in a background thread (CPU bound).
+        Does NOT create the pi3d.Texture (GPU bound, must be main thread).
+        """
         try:
             self.__logger.debug(f"loading images: {pics[0].fname} {pics[1].fname if pics[1] else ''}")
             if self.__mat_images and self.__matter is None:
@@ -372,18 +428,104 @@ class ViewerDisplay:
                     self.__logger.warning("Failed to load image object for %s", pics[0].fname)
                     return None
                 self.__logger.debug("Image loaded: %s, size: %s, mode: %s", pics[0].fname, im.size, im.mode)
+
+                # --- Start of new optimized loading block ---
+
+                # A. Get original dimensions and check if orientation requires swapping them for aspect calculation
+                original_w, original_h = im.size
+                is_rotated = pics[0].orientation in [5, 6, 7, 8]
+                oriented_w = original_h if is_rotated else original_w
+                oriented_h = original_w if is_rotated else original_h
+                
+                # B. Calculate target dimensions based on Viewport and Ken Burns settings
+                vp_w, vp_h = self.__get_viewport_size()
+                if vp_w == 0 and size: vp_w, vp_h = size # Fallback
+                
+                req_w, req_h = 0, 0
+                if vp_w > 0 and vp_h > 0:
+                    image_ar = oriented_w / oriented_h
+                    viewport_ar = vp_w / vp_h
+                    
+                    if self.__kenburns:
+                        if viewport_ar > image_ar: # Portrait-like
+                            zoom = 1.0 + (self.__kb_portrait_wobble_pct / 100.0)
+                            req_w = vp_w * zoom
+                            req_h = req_w / image_ar
+                        elif image_ar > self.__screen_ar: # Panorama-like
+                            zoom = 1.0 + (self.__kb_panorama_zoom_pct / 100.0)
+                            req_h = vp_h * zoom
+                            req_w = req_h * image_ar
+                        else: # Landscape-like
+                            zoom = 1.0 + (self.__kb_landscape_zoom_pct / 100.0)
+                            req_h = vp_h * zoom
+                            req_w = req_h * image_ar
+                    else: # No Ken Burns
+                        if viewport_ar > image_ar:
+                            req_w = vp_w
+                            req_h = req_w / image_ar
+                        else:
+                            req_h = vp_h
+                            req_w = req_h * image_ar
+                
+                max_w = int(req_w)
+                max_h = int(req_h)
+
+                # C. Use draft mode for huge performance gain on JPEGs
+                # The draft size must be based on the original (non-oriented) dimensions.
+                draft_w, draft_h = (max_h, max_w) if is_rotated else (max_w, max_h)
+                try:
+                    im.draft(None, (draft_w, draft_h))
+                    self.__logger.debug(f"Drafting image to fit ~{draft_w}x{draft_h}")
+                except Exception: # draft is only for JPEG, might fail on others
+                    pass
+
+                # D. Apply orientation transpose. This is a lazy operation.
                 if pics[0].orientation != 1:
                     im = self.__orientate_image(im, pics[0])
-                    self.__logger.debug("Image after orientation: size: %s, mode: %s", im.size, im.mode)
+                    self.__logger.debug("Image after lazy orientation: size: %s, mode: %s", im.size, im.mode)
 
-            if self.__crop_ar is not None:
+                # E. Final resize. This triggers the actual (drafted) load and resize.
+                if oriented_w > max_w or oriented_h > max_h:
+                    self.__logger.info(f"Downsizing from {oriented_w}x{oriented_h} to {max_w}x{max_h} and uploading texture")
+                else:
+                    self.__logger.debug(f"Resizing image from {im.size} to fit {max_w}x{max_h}")
+                im.thumbnail((max_w, max_h), Image.Resampling.BILINEAR)
+                self.__logger.debug(f"Final image size for texture: {im.size}")
+                # --- End of new optimized loading block ---
+ 
+            # Determine cropping logic based on orientation and Ken Burns state
+            image_ar = im.width / im.height
+            is_portrait = image_ar < self.__viewport_ar
+            is_panorama = image_ar > self.__screen_ar
+            target_crop_ar = None
+
+            if self.__kenburns:
+                # If Ken Burns is ON:
+                # Do NOT crop physically. We handle the "crop" (scroll limits) in __calculate_kenburns_transform.
+                # This ensures we have the full image resolution available and avoids destructive cropping.
+                # EXCEPTION: Panorama with configured crop to save resources.
+                if is_panorama and self.__panorama_crop_ar:
+                    target_crop_ar = self.__panorama_crop_ar
+                else:
+                    target_crop_ar = None
+            else:
+                # If Ken Burns is OFF:
+                # - Apply cropping if configured for the respective orientation
+                if is_portrait and self.__portrait_crop_ar:
+                    target_crop_ar = self.__portrait_crop_ar
+                elif not is_portrait and self.__landscape_crop_ar:
+                    target_crop_ar = self.__landscape_crop_ar
+
+            if target_crop_ar:
                 image_ar = im.width / im.height
-                if (image_ar / self.__crop_ar) > 1.01:
-                    new_width = self.__crop_ar * im.height
+                if (image_ar / target_crop_ar) > 1.01:
+                    # Image is wider than target: Crop Width
+                    new_width = target_crop_ar * im.height
                     left = (im.width - new_width) / 2
                     im = im.crop((left, 0, left + new_width, im.height))
-                elif (self.__crop_ar / image_ar) > 1.01:
-                    new_height = im.width / self.__crop_ar
+                elif (target_crop_ar / image_ar) > 1.01:
+                    # Image is taller than target: Crop Height
+                    new_height = im.width / target_crop_ar
                     top = (im.height - new_height) / 2
                     im = im.crop((0, top, im.width, top + new_height))
                 self.__logger.debug("Image after cropping: size: %s, mode: %s", im.size, im.mode)
@@ -434,13 +576,26 @@ class ViewerDisplay:
                                         round(0.5 * (im_b.size[1] - im.size[1]))))
                     im = im_b
                 self.__logger.debug("Image after blurring: size: %s, mode: %s", im.size, im.mode)
-            self.__logger.debug("Creating pi3d.Texture from image: size: %s, mode: %s", im.size, im.mode)
-            tex = pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=False)
+            return im
         except Exception as e:
-            self.__logger.warning("Can't create tex from file: \"%s\" or \"%s\"", pics[0].fname, pics[1])
+            self.__logger.warning("Can't prepare image from file: \"%s\" or \"%s\"", pics[0].fname, pics[1])
             self.__logger.warning("Cause: %s", e)
-            tex = None
-        return tex
+            return None
+
+    def __async_load_wrapper(self, pics, size):
+        """Wrapper to run __prepare_image in a thread and store result."""
+        self.__loading_result = self.__prepare_image(pics, size)
+
+    def __tex_load_sync(self, pics, size=None):
+        """Synchronous wrapper for single image display."""
+        im = self.__prepare_image(pics, size)
+        if im is None:
+            return None
+        try:
+            return pi3d.Texture(im, blend=True, m_repeat=False, free_after_load=True)
+        except Exception as e:
+            self.__logger.warning("Can't create tex from image: %s", e)
+            return None
 
     def __make_text(self, pic, paused, side=0, pair=False):
         info_strings = []
@@ -566,15 +721,55 @@ class ViewerDisplay:
             display_config=pi3d.DISPLAY_CONFIG_HIDE_CURSOR | pi3d.DISPLAY_CONFIG_NO_FRAME,
             background=self.__solid_background, use_glx=self.__use_glx,
             use_sdl2=self.__use_sdl2)
+        
+        # Sanity check and correct aspect ratios based on actual display dimensions
+        if self.__display:
+            actual_ar = self.__display.width / self.__display.height
+            # If configured screen AR is unreasonable or differs significantly from actual, use actual.
+            if self.__screen_ar is None or self.__screen_ar > 10.0 or self.__screen_ar < 0.1 or abs(self.__screen_ar - actual_ar) > 0.1:
+                 self.__logger.warning(f"Sanity Check: Configured screen_aspect_ratio {self.__screen_ar} seems wrong for display {self.__display.width}x{self.__display.height}. Using actual AR {actual_ar:.3f}.")
+                 self.__screen_ar = actual_ar
+            
+            # If viewport AR is unreasonable, reset to screen AR
+            if self.__viewport_ar is None or self.__viewport_ar > 10.0 or self.__viewport_ar < 0.1:
+                 self.__logger.warning(f"Sanity Check: Configured viewport_aspect_ratio {self.__viewport_ar} is unreasonable. Resetting to screen AR {self.__screen_ar:.3f}.")
+                 self.__viewport_ar = self.__screen_ar
+
+        self.__logger.debug(f"DEBUG: Display initialized: {self.__display.width}x{self.__display.height}")
+        self.__logger.debug(f"DEBUG: Final AR - Screen: {self.__screen_ar:.3f}, Viewport: {self.__viewport_ar:.3f}")
+
         camera = pi3d.Camera(is_3d=False)
         shader = pi3d.Shader(self.__shader)
-        self.__slide = pi3d.Sprite(camera=camera, w=self.__display.width, h=self.__display.height, z=5.0)
+        self.__blend_shader = shader # Keep reference to blend shader for video slideshows
+        
+        # Create a unit sprite (1x1). We will scale it dynamically for each image
+        # to achieve "Aspect Fill" via geometry instead of shader math.
+        self.__slide = pi3d.Sprite(camera=camera, w=1.0, h=1.0, z=5.0)
+        
         self.__slide.set_shader(shader)
         self.__slide.unif[47] = self.__edge_alpha
         self.__slide.unif[54] = float(self.__blend_type)
         self.__slide.unif[55] = 1.0  # brightness
+        
+        # Initialize texture uniforms to defaults (Scale=1.0, Offset=0.0) to prevent artifacts
+        # tex0 (FG)
+        self.__slide.unif[42] = 1.0; self.__slide.unif[43] = 1.0
+        self.__slide.unif[48] = 0.0; self.__slide.unif[49] = 0.0
+        self.__slide.unif[50] = 1.0 # Scale/Mix tex0
+        # tex1 (BG)
+        self.__slide.unif[45] = 1.0; self.__slide.unif[46] = 1.0
+        self.__slide.unif[51] = 0.0; self.__slide.unif[52] = 0.0
+        self.__slide.unif[53] = 1.0 # Scale/Mix tex1
+        
         self.__textblocks = [None, None]
-        self.__flat_shader = pi3d.Shader("uv_flat")
+        
+        # Use uv_flat for images to allow simple alpha blending of two separate sprites
+        self.__flat_shader = pi3d.Shader("uv_flat") 
+        self.__slide.set_shader(self.__flat_shader)
+        # Place background sprite further back (z=10.0) to avoid z-fighting with foreground (z=5.0)
+        self.__slide_bg = pi3d.Sprite(camera=camera, w=1.0, h=1.0, z=10.0)
+        self.__slide_bg.set_shader(self.__flat_shader)
+        
         self.__sfg = None # Reset foreground texture after display re-initialization
         self.__sbg = None # Reset background texture after display re-initialization
         self.__skip_draw = True # Set flag to skip first draw call after re-initialization
@@ -600,68 +795,93 @@ class ViewerDisplay:
         if not loop_running:
             return (False, False, False)
 
+        # Ensure we are using the flat shader for image slideshows (2-sprite system)
+        if self.__slide.shader != self.__flat_shader:
+             self.__slide.set_shader(self.__flat_shader)
+             self.__slide_bg.set_shader(self.__flat_shader)
+
         if self.__background_sprite:
             self.__background_sprite.draw()
 
         tm = time.time()
         if pics is not None and pics[0] is not None:
-            # This block only executes when the controller passes a new image
-            if self.__kenburns and self.__kb_current_state:
-                self.__kb_previous_state = self.__kb_current_state.copy()
-
-            new_sfg = self.__tex_load(pics, (self.__display.width, self.__display.height))
-
-            if new_sfg is None:
-                return (loop_running, True, False) # Signal to skip this file
-
-            tm = time.time()
-            self.__next_tm = tm + time_delay
-            self.__name_tm = tm + fade_time + self.__show_text_tm
+            # Synchronous loading: This blocks the loop until the image is ready.
+            # The current image remains static on screen during this time.
+            new_sfg = self.__tex_load_sync(pics, (self.__display.width, self.__display.height))
             
-            if self.__sfg is None: # After video, sfg is None. Set both textures to the new one.
-                self.__alpha = 1.0 # Set alpha to 1.0 to show foreground immediately
-                self.__sbg = new_sfg
+            if new_sfg:
+                if self.__kenburns and self.__kb_current_state:
+                    self.__kb_previous_state = self.__kb_current_state.copy()
+
+                self.__textblocks = [None, None]
+
+                # Reset time base to NOW, so the display time starts counting AFTER loading is done
+                
+                if self.__sfg is None:
+                    self.__alpha = 1.0
+                    self.__sbg = new_sfg
+                    self.__slide_bg.set_textures([new_sfg])
+                else:
+                    self.__alpha = 0.0
+                    self.__sbg = self.__sfg
+                
+                self.__sfg = new_sfg
+                
+                if self.__show_text_tm > 0.0:
+                    for i, pic in enumerate(pics):
+                        self.__make_text(pic, paused, i, pics[1] is not None)
+                else:
+                    for block in range(2):
+                        self.__textblocks[block] = None
+                
+                self.__logger.debug("Setting textures: __sfg=%s, __sbg=%s", self.__sfg, self.__sbg)
+                
+                self.__slide.set_textures([self.__sfg])
+                self.__slide_bg.set_textures([self.__sbg])
+
+                # Force garbage collection to prevent stalls during transition
+                gc.collect()
+
+                # Update timestamps AFTER uploading textures to GPU to ensure transition starts exactly when image is ready
+                tm = time.time()
+                self.__transition_start_tm = tm
+                self.__next_tm = tm + time_delay
+                self.__name_tm = tm + self.__show_text_tm
+                self.__logger.info(f"Transitioning for {fade_time} sec")
+                
+                if self.__kenburns:
+                    self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
+                    self.__kb_current_state['start_time'] = tm
+                    self.__apply_kenburns_transform(self.__slide, self.__kb_current_state, 0.0)
             else:
-                self.__alpha = 0.0 # Normal operation, start fade from background
-                self.__sbg = self.__sfg # Normal operation: background is the old foreground
-
-            self.__sfg = new_sfg
-            self.__delta_alpha = 1.0 / (self.__fps * fade_time) if fade_time > 0.5 else 1.0
-
-            if self.__show_text_tm > 0.0:
-                for i, pic in enumerate(pics):
-                    self.__make_text(pic, paused, i, pics[1] is not None)
-            else:
-                for block in range(2):
-                    self.__textblocks[block] = None
-
-            self.__logger.debug("Setting textures: __sfg=%s, __sbg=%s", self.__sfg, self.__sbg)
-            self.__slide.set_textures([self.__sfg, self.__sbg])
-            
-            if self.__kenburns:
-                self.__kb_current_state = self.__calculate_kenburns_transform(self.__sfg, time_delay)
-                self.__kb_current_state['start_time'] = tm # Set start time for the new animation
-                self.__apply_kenburns_transform(self.__kb_current_state, 0.0, is_background=False)
+                return (loop_running, True, False) # Signal skip_file
 
         # This block handles the fade transition and Ken Burns effect for every frame
         if self.__alpha < 1.0:
-            self.__alpha += self.__delta_alpha
+            if fade_time > 0.5:
+                self.__alpha = (tm - self.__transition_start_tm) / fade_time
+            else:
+                self.__alpha = 1.0
             if self.__alpha > 1.0:
                 self.__alpha = 1.0
+        
+        # Apply Ken Burns transforms to both sprites independently
+        if self.__kenburns:
+            if self.__kb_previous_state and self.__alpha < 1.0:
+                 elapsed = tm - self.__kb_previous_state.get('start_time', tm)
+                 self.__apply_kenburns_transform(self.__slide_bg, self.__kb_previous_state, elapsed)
             
-            if self.__kenburns and self.__kb_previous_state:
-                elapsed = tm - self.__kb_previous_state.get('start_time', tm)
-                self.__apply_kenburns_transform(self.__kb_previous_state, elapsed, is_background=True)
+            if self.__kb_current_state:
+                 elapsed = tm - self.__kb_current_state.get('start_time', tm)
+                 self.__apply_kenburns_transform(self.__slide, self.__kb_current_state, elapsed)
 
-            if self.__kenburns and self.__kb_current_state:
-                elapsed = tm - self.__kb_current_state.get('start_time', tm)
-                self.__apply_kenburns_transform(self.__kb_current_state, elapsed, is_background=False)
-
-        elif self.__kenburns and not paused and tm < self.__next_tm:
+        elif self.__kenburns and not paused and tm < self.__next_tm + fade_time:
+            # Keep animating even if transition is done (until next slide load)
             elapsed = tm - self.__kb_current_state.get('start_time', tm)
-            self.__apply_kenburns_transform(self.__kb_current_state, elapsed)
+            self.__apply_kenburns_transform(self.__slide, self.__kb_current_state, elapsed)
 
-        self.__slide.unif[44] = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha) # smooth transition
+        # Calculate smooth alpha for the foreground sprite
+        smooth_alpha = self.__alpha * self.__alpha * (3.0 - 2.0 * self.__alpha)
 
         self.__logger.debug(f"alpha={self.__alpha:.2f}, next_tm-tm={(self.__next_tm - tm):.2f}, fade_time={fade_time:.2f}")
         if (self.__next_tm - tm) < fade_time or self.__alpha < 1.0:
@@ -676,12 +896,22 @@ class ViewerDisplay:
             self.__skip_draw = False # Reset the flag for the next frame
             return (loop_running, False, False)
 
+        # Draw Background Sprite (Old Image) - Fading Out
+        # This fades the entire old image out, solving the "ghosting" issue
+        # in pillarbox/letterbox areas.
+        self.__slide_bg.set_alpha(1.0 - smooth_alpha)
+        self.__slide_bg.draw()
+
+        # Draw Foreground Sprite (New Image) - Fading In
+        self.__slide.set_alpha(smooth_alpha)
         self.__slide.draw()
+        
         self.__draw_overlay()
         if self.clock_is_on:
             self.__draw_clock()
 
-        if self.__alpha >= 1.0 and tm < self.__name_tm:
+        # Draw New Text
+        if tm < self.__name_tm:
             if self.__show_text_tm > 0:
                 dt = 1.0 - (self.__name_tm - tm) / self.__show_text_tm
             else:
@@ -702,138 +932,218 @@ class ViewerDisplay:
         
         return (loop_running, False, False)
 
-    def __calculate_kenburns_transform(self, texture, time_delay):
-        state = {'duration': time_delay}
+    def __calculate_kenburns_transform(self, texture, duration):
+        state = {'duration': duration}
         if not self.__kenburns or not texture or texture.ix == 0 or texture.iy == 0:
             return state
 
-        display_aspect = self.__display.width / self.__display.height
+        # Use viewport aspect ratio
+        display_aspect = self.__viewport_ar
         image_aspect = texture.ix / texture.iy
         is_portrait = image_aspect < display_aspect
+        is_panorama = image_aspect > self.__screen_ar
 
-        x_start, x_end, y_start, y_end = 0.0, 0.0, 0.0, 0.0
+        # Defaults
+        start_zoom = 1.0
+        end_zoom = 1.0
+        
+        # Pan is now relative to the "overshoot" (how much the sprite is larger than screen)
+        # -1.0 = Full Left/Top, 1.0 = Full Right/Bottom
+        start_pan_x = 0.0
+        end_pan_x = 0.0
+        start_pan_y = 0.0
+        end_pan_y = 0.0
 
         if is_portrait:
-            # PORTRAIT: scroll effect
-            scale = 1.0
-            if self.__kb_random_pan:
-                # Add a small zoom to prevent black bars during horizontal pan
-                scale += self.__kb_portrait_wobble_pct / 100.0
-            state['start_scale'] = scale
-            state['end_scale'] = scale
+            # PORTRAIT: Scroll
+            # Zoom: Constant 1.0 (plus wobble if enabled)
+            # Pan Y: -1.0 -> 1.0 (Top to Bottom) or vice versa
+            
+            start_zoom = 1.0
+            end_zoom = 1.0
 
-            # Calculate vertical overshoot in pixels
-            scaled_height = (self.__display.width / image_aspect) * scale
-            overshoot_y = max(0, scaled_height - self.__display.height)
-            max_pan_y = overshoot_y / 2.0
-
-            # Randomize borders for start and end
-            start_border = max_pan_y * (random.uniform(0, self.__kb_portrait_border_pct) / 100.0)
-            end_border = max_pan_y * (random.uniform(0, self.__kb_portrait_border_pct) / 100.0)
-
-            scroll_dir = self.__kb_scroll_direction
+            scroll_dir = self.__kb_portrait_scroll_direction
             if scroll_dir == 'random':
                 scroll_dir = random.choice(['up', 'down'])
+            
+            if scroll_dir == 'down': # Top to Bottom
+                start_pan_y = -1.0
+                end_pan_y = 1.0
+            else: # Bottom to Top
+                start_pan_y = 1.0
+                end_pan_y = -1.0
 
-            # config 'down' = view 'top down' = image moves up = offset pos -> neg
-            # config 'up' = view 'bottom up' = image moves down = offset neg -> pos
-            if scroll_dir == 'down':
-                y_start, y_end = max_pan_y - start_border, -max_pan_y + end_border
-            else: # 'up'
-                y_start, y_end = -max_pan_y + start_border, max_pan_y - end_border
-
+            zoom_pct = 0.0
             if self.__kb_random_pan:
-                # Using display width for wobble range calculation is more intuitive for portrait
-                wobble_range_x = (self.__display.width * self.__kb_portrait_wobble_pct / 100.0) / 2.0
-                x_start = random.uniform(-wobble_range_x, wobble_range_x)
-                x_end = random.uniform(-wobble_range_x, wobble_range_x)
+                # Add zoom to allow for X-wobble without black bars
+                zoom_pct = self.__kb_portrait_wobble_pct
+                zoom_factor = 1.0 + (self.__kb_portrait_wobble_pct / 100.0)
+                start_zoom = zoom_factor
+                end_zoom = zoom_factor
+                
+                # Use full available slack for wobble
+                start_pan_x = random.uniform(-1.0, 1.0)
+                end_pan_x = random.uniform(-1.0, 1.0)
+            
+            self.__logger.info(f"KB Portrait: Scroll {scroll_dir}, Zoom {zoom_pct:.2f}% (Wobble), Pan X: {start_pan_x:.3f} -> {end_pan_x:.3f}")
 
-        else: # LANDSCAPE: zoom effect
-            direction = self.__kb_zoom_direction
+        elif is_panorama:
+            # PANORAMA: Scroll Horizontal
+            
+            # Zoom
+            zoom_pct = self.__kb_panorama_zoom_pct
+            zoom_factor = 1.0 + (zoom_pct / 100.0)
+            
+            zoom_dir = self.__kb_panorama_zoom_direction
+            if zoom_dir == "random":
+                zoom_dir = random.choice(["in", "out"])
+            
+            if zoom_dir == "in":
+                start_zoom = 1.0
+                end_zoom = zoom_factor
+            else:
+                start_zoom = zoom_factor
+                end_zoom = 1.0
+
+            # Scroll
+            scroll_dir = self.__kb_panorama_scroll_direction
+            if scroll_dir == 'random':
+                scroll_dir = random.choice(['left', 'right'])
+            
+            if scroll_dir == 'right': # Left to Right (Viewport moves right)
+                start_pan_x = -1.0
+                end_pan_x = 1.0
+            else: # Right to Left (Viewport moves left)
+                start_pan_x = 1.0
+                end_pan_x = -1.0
+            
+            # Wobble Y (using landscape wobble pct as fallback/default for horizontal images)
+            if self.__kb_random_pan:
+                 wobble_range = self.__kb_landscape_wobble_pct / 100.0
+                 start_pan_y = random.uniform(-wobble_range, wobble_range)
+                 end_pan_y = random.uniform(-wobble_range, wobble_range)
+                 
+                 # Ensure zoom is enough to cover wobble
+                 min_zoom = 1.0 + wobble_range
+                 start_zoom = max(start_zoom, min_zoom)
+                 end_zoom = max(end_zoom, min_zoom)
+
+            self.__logger.info(f"KB Panorama: Scroll {scroll_dir}, Zoom {zoom_dir} {zoom_pct:.2f}%, Pan Y: {start_pan_y:.3f} -> {end_pan_y:.3f}")
+
+        else:
+            # LANDSCAPE: Zoom
+            direction = self.__kb_landscape_zoom_direction
             if direction == "random":
                 direction = random.choice(["in", "out"])
 
             # Randomize zoom percentage for each image
-            zoom_pct = random.uniform(0, self.__kb_zoom_pct)
+            # Ensure a minimum zoom to make the effect visible (at least 30% of max or 5%, whichever is smaller)
+            min_zoom = min(5.0, self.__kb_landscape_zoom_pct * 0.3)
+            zoom_pct = random.uniform(min_zoom, self.__kb_landscape_zoom_pct)
             zoom_factor = 1.0 + (zoom_pct / 100.0)
+            
+            # Wobble range
+            wobble_range = self.__kb_landscape_wobble_pct / 100.0
 
             if direction == "in":
-                state['start_scale'] = 1.0
-                state['end_scale'] = zoom_factor
-            else:  # out
-                state['start_scale'] = zoom_factor
-                state['end_scale'] = 1.0
+                start_zoom = 1.0
+                end_zoom = zoom_factor
+                
+                # Start centered (0.0), End with wobble
+                if self.__kb_random_pan:
+                    end_pan_x = random.uniform(-wobble_range, wobble_range)
+                    end_pan_y = random.uniform(-wobble_range, wobble_range)
+                
+                self.__logger.info(f"KB Landscape: Zoom IN {zoom_pct:.2f}%, End Pan: ({end_pan_x:.3f}, {end_pan_y:.3f})")
+            
+            else: # out
+                start_zoom = zoom_factor
+                end_zoom = 1.0
+                
+                # Start with wobble, End centered (0.0)
+                if self.__kb_random_pan:
+                    start_pan_x = random.uniform(-wobble_range, wobble_range)
+                    start_pan_y = random.uniform(-wobble_range, wobble_range)
+                
+                self.__logger.info(f"KB Landscape: Zoom OUT {zoom_pct:.2f}%, Start Pan: ({start_pan_x:.3f}, {start_pan_y:.3f})")
 
-            if self.__kb_random_pan:
-                # Randomize pan magnitude for this image, relative to screen size
-                pan_pct_x = random.uniform(0, self.__kb_landscape_wobble_pct)
-                pan_pct_y = random.uniform(0, self.__kb_landscape_wobble_pct)
-
-                # Calculate minimum scale to allow for the desired wobble, ensuring consistency
-                min_scale_x = (display_aspect / image_aspect) * (1 + pan_pct_x / 100.0) if image_aspect > 0 else 1.0
-                min_scale_y = 1 + pan_pct_y / 100.0
-                min_scale_for_wobble = max(min_scale_x, min_scale_y)
-
-                # Apply the minimum scale to the zoom animation
-                state['start_scale'] = max(state['start_scale'], min_scale_for_wobble)
-                state['end_scale'] = max(state['end_scale'], min_scale_for_wobble)
-
-                # With the scale adjusted, the desired wobble is now always possible.
-                desired_wobble_x = (self.__display.width * pan_pct_x / 100.0) / 2.0
-                desired_wobble_y = (self.__display.height * pan_pct_y / 100.0) / 2.0
-
-                x_start = random.uniform(-desired_wobble_x, desired_wobble_x)
-                y_start = random.uniform(-desired_wobble_y, desired_wobble_y)
-                x_end = random.uniform(-desired_wobble_x, desired_wobble_x)
-                y_end = random.uniform(-desired_wobble_y, desired_wobble_y)
-
-        state['start_offset_x'], state['end_offset_x'] = x_start, x_end
-        state['start_offset_y'], state['end_offset_y'] = y_start, y_end
-
-        self.__logger.debug("KB Setup: is_portrait=%s, scale=%.2f->%.2f, pan_x=%.2f->%.2f, pan_y=%.2f->%.2f",
-            is_portrait, state.get('start_scale', 0), state.get('end_scale', 0), x_start, x_end, y_start, y_end)
+        state['start_zoom'] = start_zoom
+        state['end_zoom'] = end_zoom
+        state['start_pan_x'] = start_pan_x
+        state['end_pan_x'] = end_pan_x
+        state['start_pan_y'] = start_pan_y
+        state['end_pan_y'] = end_pan_y
+        
         return state
 
-    def __apply_kenburns_transform(self, state, elapsed_time, is_background=False):
+    def __apply_kenburns_transform(self, sprite, state, elapsed_time):
         if not state or state.get('duration', 0) <= 0:
             return
 
         t = min(1.0, max(0.0, elapsed_time / state['duration']))
         t = t * t * (3.0 - 2.0 * t) # ease-in-out
 
-        kb_scale = state['start_scale'] + t * (state['end_scale'] - state['start_scale'])
-        offset_x = state['start_offset_x'] + t * (state['end_offset_x'] - state['start_offset_x'])
-        offset_y = state['start_offset_y'] + t * (state['end_offset_y'] - state['start_offset_y'])
-
-        texture = self.__sfg if not is_background else self.__sbg
+        zoom = state['start_zoom'] + t * (state['end_zoom'] - state['start_zoom'])
+        pan_x = state['start_pan_x'] + t * (state['end_pan_x'] - state['start_pan_x'])
+        pan_y = state['start_pan_y'] + t * (state['end_pan_y'] - state['start_pan_y'])
+        
+        # Get texture from the specific sprite
+        texture = sprite.buf[0].textures[0] if sprite.buf[0].textures else None
         if not texture:
             return
 
-        display_aspect = self.__display.width / self.__display.height
+        # Calculate Aspect Fill Dimensions (Geometry)
+        # We scale the sprite so the image fills the viewport perfectly.
+        display_aspect = self.__viewport_ar
         image_aspect = texture.ix / texture.iy if texture.iy > 0 else 1.0
-
-        # Base scaling to fit image without distortion
-        if display_aspect > image_aspect: # Portrait on landscape
-            scale_x = kb_scale
-            scale_y = kb_scale * (display_aspect / image_aspect)
-        else: # Landscape on portrait
-            scale_x = kb_scale * (image_aspect / display_aspect)
-            scale_y = kb_scale
-
-        # Convert pixel offsets to shader's texture coordinate space
-        offset_x_unif = (offset_x / self.__display.width) / scale_x if scale_x != 0 else 0
-        offset_y_unif = (offset_y / self.__display.height) / scale_y if scale_y != 0 else 0
-
-        if is_background:
-            self.__slide.unif[45] = scale_x
-            self.__slide.unif[46] = scale_y
-            self.__slide.unif[50] = offset_x_unif
-            self.__slide.unif[51] = offset_y_unif
+        
+        vp_w, vp_h = self.__get_viewport_size()
+        
+        if display_aspect > image_aspect:
+            # Portrait image on Landscape screen (or narrower on wider)
+            # Fit Width, Crop Height
+            # Sprite Width = Viewport Width
+            # Sprite Height = Viewport Width / Image AR (This will be > Viewport Height)
+            geo_w = vp_w
+            geo_h = vp_w / image_aspect
         else:
-            self.__slide.unif[42] = scale_x
-            self.__slide.unif[43] = scale_y
-            self.__slide.unif[48] = offset_x_unif
-            self.__slide.unif[49] = offset_y_unif
+            # Landscape image on Portrait screen (or wider on narrower)
+            # Fit Height, Crop Width
+            geo_h = vp_h
+            geo_w = vp_h * image_aspect
+
+        # Apply Zoom to Geometry
+        # Zooming IN means making the sprite LARGER
+        geo_w *= zoom
+        geo_h *= zoom
+        
+        # Apply Pan to Geometry (Move the sprite)
+        # Calculate max shift allowed (overshoot)
+        max_x = max(0, (geo_w - vp_w) / 2.0)
+        
+        # Calculate max_y with optional virtual crop for portrait
+        effective_geo_h = geo_h
+        if self.__portrait_crop_ar and display_aspect > image_aspect:
+             virtual_geo_h = geo_w / self.__portrait_crop_ar
+             effective_geo_h = min(geo_h, virtual_geo_h)
+             
+        max_y = max(0, (effective_geo_h - vp_h) / 2.0)
+        
+        pos_x = pan_x * max_x
+        pos_y = pan_y * max_y
+        
+        # Update Sprite Geometry
+        sprite.scale(geo_w, geo_h, 1.0)
+        
+        # Use different Z-depths to avoid Z-fighting during transitions
+        z_pos = 10.0 if sprite == self.__slide_bg else 5.0
+        sprite.position(pos_x, pos_y, z_pos)
+
+        # Log only for the foreground sprite (self.__slide) to avoid log spam
+        if sprite == self.__slide:
+             mode = "Portrait" if display_aspect > image_aspect else "Landscape"
+             self.__logger.debug("KB: %s | vp=%.1fx%.1f sprite=%.1fx%.1f pos=%.1f,%.1f zoom=%.3f max_y=%.1f pan_y=%.2f eff_h=%.1f", 
+                                 mode, vp_w, vp_h, geo_w, geo_h, pos_x, pos_y, zoom, max_y, pan_y, effective_geo_h)
     
     def slideshow_stop(self):
         if self.__display:
@@ -847,7 +1157,7 @@ class ViewerDisplay:
         self.__logger.info(f"Displaying single image {pic.fname} for {duration}s")
         self.slideshow_start() # Creates display, shaders, etc.
 
-        tex = self.__tex_load([pic, None], size=(self.__display.width, self.__display.height))
+        tex = self.__tex_load_sync([pic, None], size=(self.__display.width, self.__display.height))
         if tex is None:
             self.__logger.error("Failed to load texture for single image display.")
             self.slideshow_stop()
@@ -901,6 +1211,9 @@ class ViewerDisplay:
     def play_video_slideshow(self, pic, video_extractor: VideoExtractor, fade_time: float, time_delay: float):
         video_path = pic.fname
         self.__logger.info(f"Starting video slideshow for: {video_path}")
+        
+        # Switch to blend shader for video slideshow (requires mixing on one sprite)
+        self.__slide.set_shader(self.__blend_shader)
         
         # Prepare text overlay using the standard method
         self.__make_text(pic, False)
