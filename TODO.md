@@ -208,3 +208,42 @@
    venv/bin/python test/test_video_slide_show.py --sec-per-frame 10 --blend-ratio 0.1
    ```
    Dies extrahiert alle 10 Sekunden einen Frame und verwendet 1 Sekunde (`10s * 0.1`) für die Überblendung.
+
+## 2026-02-09
+
+## src/picframe/viewer_display.py
+- **Performance & Stabilität:**
+  - **Smart Downscaling:** Berechnung der Zielauflösung basierend auf Viewport und Seitenverhältnis (Fit Width vs Fit Height) zur massiven Reduzierung des Speicherverbrauchs und IO-Wait.
+  - **Timer-Logik:** Der Anzeigetimer (`time_delay`) wird nun erst nach dem vollständigen Laden und Anzeigen des Bildes zurückgesetzt, um Überspringen bei langen Ladezeiten zu verhindern.
+  - **Zeitbasierte Übergänge:** Übergänge (`fade_time`) sind nun zeitbasiert statt framebasiert, was konstante Übergangszeiten auch bei niedrigen FPS garantiert.
+  - **Late Timestamping:** Der Startzeitpunkt für Übergänge wird erst nach dem Textur-Upload gesetzt, um visuelle Sprünge zu vermeiden.
+  - **Pre-emptive GC:** Explizite Garbage Collection (`gc.collect()`) vor Übergängen eingefügt.
+- **Panorama-Modus:**
+  - Neue Logik für Bilder, die breiter als das Bildschirm-Seitenverhältnis sind (`AR > Screen AR`).
+  - Horizontales Scrolling (Links/Rechts) statt nur Zoom.
+  - Zoom-Optionen (`kenburns_panorama_zoom_pct`) auch im Panorama-Modus verfügbar.
+- **Video Slideshow:**
+  - Implementierung von `play_video_slideshow` zur nahtlosen Anzeige von extrahierten Video-Frames mit Überblendung.
+
+## src/picframe/controller.py
+- **Video-Wiedergabe:**
+  - Unterstützung für zwei Modi:
+    - `ffmpeg`: Videos werden als Slideshow aus extrahierten Frames abgespielt (nahtlos).
+    - `mpv`: Videos werden mit externem Player abgespielt (erfordert Neustart).
+  - Initialisierung des `VideoExtractor` für den `ffmpeg`-Modus.
+
+## src/picframe/start.py
+- **Bugfix:** Explizite Importe von `model`, `controller` und `viewer_display` zur Vermeidung zirkulärer Abhängigkeiten und Initialisierungsfehler.
+
+## src/picframe/config/configuration_example.yaml
+- **Neue Parameter für Panorama-Modus:** `kenburns_panorama_scroll_direction`, `kenburns_panorama_zoom_direction`, `kenburns_panorama_zoom_pct`, `panorama_crop_to_aspect_ratio`.
+- **Neue Parameter für Video-Slideshow:** `video_playback_mode`, `video_slideshow_step_time`, `video_slideshow_fade_time`, `video_slideshow_time_delay`, `video_slideshow_pillarbox_pct`, `video_slideshow_quality`, `video_slideshow_temp_dir`.
+
+## workflow.md
+- Aktualisiertes Mermaid-Diagramm, das nun die Unterscheidung zwischen Video-Slideshows und Bildern sowie die neue Panorama-Logik im Ken-Burns-Ablauf darstellt.
+
+## README.md
+- Dokumentation um neue Features (Panorama-Modus) und Performance-Optimierungen (Smart Downscaling Tabelle) erweitert.
+
+## change.log
+- Einträge für Performance-Optimierungen und Panorama-Modus hinzugefügt.

@@ -10,7 +10,10 @@ import logging
 import shutil
 from logging.handlers import TimedRotatingFileHandler
 
-from picframe import model, viewer_display, controller, __version__
+import picframe.model as model
+import picframe.controller as controller
+import picframe.viewer_display as viewer_display
+from picframe import __version__
 
 # Define the project root as two levels up from this file (src/picframe -> src -> project_root)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
