@@ -25,11 +25,11 @@ env/
 Thumbs.db
  
 # Test media files that should not be in the repository
-test/clips/
+test/clips/full
 test/fullmix/
-test/kamera/
-test/landscape/
+# test/kamera/
+# test/landscape/
 test/long/
-test/mixed/
-test/portrait/
-test/videos/
+# test/mixed/
+# test/portrait/
+# test/videos/
