@@ -4,6 +4,7 @@ import time
 import logging
 import locale
 import random
+import subprocess
 from picframe import geo_reverse, image_cache
 
 DEFAULT_CONFIGFILE = "~/picframe_data/config/configuration.yaml"
@@ -61,6 +62,10 @@ DEFAULT_CONFIG = {
         'clock_top_bottom': "T",
         'clock_wdt_offset_pct': 3.0,
         'clock_hgt_offset_pct': 3.0,
+        'icon_path': '~/picframe/src/picframe/data/icons',
+        'icon_wdt_offset_pct': 5.0,
+        'icon_hgt_offset_pct': 1.8,
+        'icon_opacity': 1.0,
         'menu_text_sz': 40,
         'menu_autohide_tm': 10.0,
         'geo_suppress_list': [],
@@ -205,6 +210,7 @@ class Model:
         self.__file_list = []  # this is now a list of tuples i.e (file_id1,) or (file_id1, file_id2)
         self.__number_of_files = 0  # this is shortcut for len(__file_list)
         self.__reload_files = True
+        self.__initial_sync_triggered = False
         self.__file_index = 0  # pointer to next position in __file_list
         self.__current_pics = (None, None)  # this hold a tuple of (pic, None) or two pic objects if portrait pairs
         self.__num_run_through = 0
@@ -422,29 +428,31 @@ class Model:
             pic2 = None
 
             # Reload the playlist if requested
+            just_reloaded = False
             if self.__reload_files:
-                # When reloading, the file list might be empty if a new album was just copied
-                # by the watcher but the image_cache hasn't finished processing it yet.
-                # We retry for a few seconds to give the cache time to catch up.
-                max_retries = 10
-                retry_count = 0
                 self.__logger.info("Reloading file list...")
-                while retry_count < max_retries:
-                    self.__get_files() # This queries the DB
-                    missing_images = 0
-                    if self.__number_of_files > 0:
-                        self.__logger.info("Reload successful, found %d files.", self.__number_of_files)
-                        break
-                    self.__logger.info("Reload attempt found no files. Retrying...")
-                    time.sleep(1) # Wait 1 second before retrying
-                    retry_count += 1
-                else: # This 'else' belongs to the 'while' loop, executed if the loop finishes without break
-                    self.__logger.warning("Failed to reload file list after %d attempts. No files found.", max_retries)
+                self.__get_files() # This queries the DB
+                just_reloaded = True
+
+                # Trigger initial sync if cache is empty on first load
+                if self.__number_of_files == 0 and not self.__initial_sync_triggered:
+                    self.__logger.info("No images found in cache on startup. Triggering initial sync...")
+                    sync_script_path = os.path.expanduser('~/picframe/scripts/sync_photos.sh')
+                    if os.path.exists(sync_script_path):
+                        try:
+                            # Use Popen for non-blocking execution
+                            subprocess.Popen([sync_script_path])
+                            self.__logger.info("Successfully launched sync_photos.sh in the background.")
+                        except Exception as e:
+                            self.__logger.error(f"Failed to launch sync_photos.sh: {e}")
+                    else:
+                        self.__logger.warning(f"Sync script not found at {sync_script_path}, cannot trigger initial sync.")
+                    self.__initial_sync_triggered = True # Mark as triggered to avoid retrying constantly
 
             # If we don't have any files to show, prepare the "no images" image
             # Also, set the reload_files flag so we'll check for new files on the next pass...
             if self.__number_of_files == 0:
-                if self.get_model_config()['group_by_dir']:
+                if self.get_model_config()['group_by_dir'] and not just_reloaded:
                     self.__reload_files = True
                     continue # Try to load a new album immediately
                 
@@ -467,6 +475,9 @@ class Model:
                 self.__file_index = 0
                 if self.get_model_config()['group_by_dir']:
                     self.__reload_files = True # Force reload to select a new album
+                
+                if self.__reload_files:
+                    continue
 
             # Load the current image set
             file_ids = self.__file_list[self.__file_index]
@@ -571,6 +582,34 @@ class Model:
             if self.__number_of_files == 0 and self.get_model_config()['group_by_dir']:
                 self.__reload_files = True
 
+    def purge_bad_file(self):
+        """Removes the current file from the playlist and database cache to prevent display loops on corrupted files."""
+        idx_to_remove = self.__file_index - 1
+        
+        # Handle wrap around if we just showed the last image
+        if idx_to_remove < 0:
+            idx_to_remove = len(self.__file_list) - 1
+            
+        if 0 <= idx_to_remove < len(self.__file_list):
+            file_ids = self.__file_list[idx_to_remove]
+            
+            # Remove from DB so it's not reloaded immediately
+            for file_id in file_ids:
+                self.__image_cache.delete_file_from_db(file_id)
+            
+            # Remove from internal list
+            del self.__file_list[idx_to_remove]
+            self.__number_of_files -= 1
+            
+            if self.__file_index > idx_to_remove:
+                self.__file_index -= 1
+            
+            self.__logger.warning("Removed unreadable file(s) with ID %s from playlist and cache.", file_ids)
+
+            # If album is empty, force reload to get next album immediately
+            if self.__number_of_files == 0 and self.get_model_config()['group_by_dir']:
+                self.__reload_files = True
+
     def save_current_file_state(self, file_path):
         """Writes the path of the currently displayed file to the log."""
         try:
@@ -599,6 +638,13 @@ class Model:
             self.save_current_file_state(next_file_row['fname'])
 
     def __get_files(self):
+        # Set scanning flag
+        try:
+            with open("/dev/shm/picframe_scanning.flag", "w") as f:
+                f.write("1")
+        except Exception as e:
+            self.__logger.warning("Could not create scanning flag file: %s", e)
+
         if self.subdirectory != "":
             picture_dir = os.path.join(self.__pic_dir, self.subdirectory)  # TODO catch, if subdirecotry does not exist
         else:
@@ -617,9 +663,13 @@ class Model:
             all_albums = []
             if os.path.isdir(picture_dir):
                 for year_dir in sorted(os.listdir(picture_dir)):
+                    if year_dir.startswith('.') or year_dir.endswith('.tmp'):
+                        continue
                     year_path = os.path.join(picture_dir, year_dir)
                     if os.path.isdir(year_path):
                         for loc_dir in sorted(os.listdir(year_path)):
+                            if loc_dir.startswith('.') or loc_dir.endswith('.tmp'):
+                                continue
                             loc_path = os.path.join(year_path, loc_dir)
                             if os.path.isdir(loc_path):
                                 all_albums.append(loc_path)
@@ -660,6 +710,12 @@ class Model:
                 if resume_album: # Don't duplicate if we just reset
                     unshown_albums = [a for a in unshown_albums if a != resume_album]
 
+                # Avoid repeating the last album immediately if possible
+                if self.__current_album_path and len(unshown_albums) > 1:
+                    excluded_album = self.__current_album_path
+                    unshown_albums = [a for a in unshown_albums if a != excluded_album]
+                    self.__logger.info(f"Temporarily excluding {excluded_album} to avoid immediate repetition.")
+
             if shuffle_global:
                 random.shuffle(unshown_albums)
             albums_to_load.extend(unshown_albums)
@@ -669,6 +725,7 @@ class Model:
             max_albums = model_config.get('playlist_max_albums', 20)
             max_files = model_config.get('playlist_max_files', 2000)
             loaded_albums_count = 0
+            empty_albums_count = 0
             
             self.__logger.info(f"Loading batch of albums (max {max_albums} albums or {max_files} files)...")
             
@@ -702,10 +759,31 @@ class Model:
                     self.__logger.info(f"Added {len(files)} files from album: {album_path}")
                     loaded_albums_count += 1
                 else:
-                    # Empty album, mark as shown so we don't try again immediately
-                    self.__shown_albums.add(album_path)
+                    # Check if directory is actually empty on disk to distinguish between "empty album" and "cache not ready"
+                    has_files_on_disk = False
+                    try:
+                        # Valid extensions (Images + Videos)
+                        valid_exts = set(image_cache.ImageCache.EXTENSIONS)
+                        valid_exts.update({'.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v', '.ts', '.m2ts'})
+                        
+                        if os.path.isdir(album_path):
+                            for f in os.listdir(album_path):
+                                if os.path.splitext(f)[1].lower() in valid_exts:
+                                    has_files_on_disk = True
+                                    break
+                    except OSError:
+                        pass
+
+                    if has_files_on_disk:
+                        self.__logger.debug(f"Album {album_path} has files on disk but not in DB yet. Waiting for cache.")
+                    else:
+                        # Empty album, mark as shown so we don't try again immediately
+                        self.__shown_albums.add(album_path)
+                        empty_albums_count += 1
             
             self.__logger.info(f"Playlist populated with {len(self.__file_list)} files from {loaded_albums_count} albums.")
+            if empty_albums_count > 0:
+                self.__logger.info(f"Skipped {empty_albums_count} empty albums (marked as shown).")
             
             # 5. Set Index (Resume)
             if resumed and resume_file_path:
@@ -758,13 +836,28 @@ class Model:
         self.__number_of_files = len(self.__file_list)
         if not resumed:
             self.__file_index = 0
+
+        # Manage no_files flag
+        try:
+            if self.__number_of_files == 0:
+                with open("/dev/shm/picframe_no_files.flag", "w") as f:
+                    f.write("1")
+            else:
+                if os.path.exists("/dev/shm/picframe_no_files.flag"):
+                    os.remove("/dev/shm/picframe_no_files.flag")
+        except Exception as e:
+            self.__logger.warning("Could not manage no_files flag file: %s", e)
+
         self.__num_run_through = 0
         self.__reload_files = False
 
-    def __generate_random_string(self, length):
-        random_bytes = os.urandom(length // 2)
-        random_string = ''.join('{:02x}'.format(ord(chr(byte))) for byte in random_bytes)
-        return random_string
+        # Remove scanning flag
+        try:
+            if os.path.exists("/dev/shm/picframe_scanning.flag"):
+                os.remove("/dev/shm/picframe_scanning.flag")
+        except Exception as e:
+            self.__logger.warning("Could not remove scanning flag file: %s", e)
+
 
     def __write_shown_albums_log(self):
         """Writes the current set of shown albums to the log file, overwriting it."""

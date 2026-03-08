@@ -22,6 +22,7 @@ class VideoExtractor:
         self.__quality = quality
         self.__resolution = resolution
         self.__stop_event = threading.Event()
+        self.__queued_items = set()
         self.__queue = queue.Queue()
         self.__current_process = None
         self.__current_video_path = None
@@ -32,6 +33,7 @@ class VideoExtractor:
 
     def extract(self, video_path):
         """Queues a video for extraction."""
+        self.__queued_items.add(str(video_path))
         self.__queue.put(video_path)
 
     def __setup_temp_dir(self, config_temp_dir):
@@ -65,7 +67,7 @@ class VideoExtractor:
         return self.__temp_dir / safe_name
 
     def is_in_process(self, video_path):
-        return self.__current_video_path == str(video_path)
+        return self.__current_video_path == str(video_path) or str(video_path) in self.__queued_items
 
     def pause(self):
         if self.__current_process and self.__current_process.poll() is None:
@@ -99,6 +101,8 @@ class VideoExtractor:
 
     def __process_video(self, video_path):
         self.__current_video_path = str(video_path)
+        if str(video_path) in self.__queued_items:
+            self.__queued_items.remove(str(video_path))
         video_temp_dir = self.get_frames_dir(video_path)
         
         if video_temp_dir.exists():
@@ -124,7 +128,13 @@ class VideoExtractor:
                     f"pad={target_width}:{target_height}:({target_width}-iw)/2:({target_height}-ih)/2," \
                     f"setsar=1"
 
-        command = [
+        command = []
+        if shell_shutil.which("nice"):
+            command.extend(["nice", "-n", "19"])
+        if shell_shutil.which("ionice"):
+            command.extend(["ionice", "-c", "3"])
+
+        command.extend([
             "ffmpeg",
             "-hide_banner",
             "-loglevel", "error",
@@ -135,7 +145,7 @@ class VideoExtractor:
             "-vf", vf_string,
             "-q:v", str(self.__quality),
             str(video_temp_dir / "frame_%04d.jpg")
-        ]
+        ])
 
         try:
             self.__logger.debug(f"Starting extraction for {video_path}")

@@ -2,109 +2,122 @@
 graph TD
     subgraph Legende
         direction LR
-        Decision((Entscheidung))
-        Action[Aktion/Zustand]
-        ConfigValue>Konfigurationswert]
+        Decision((Decision))
+        Action[Action/State]
+        ConfigValue>Configuration Value]
     end
 
-        Start((Start)) --> MediaType{Medientyp?};
+    Start((Start)) --> MediaType{Media Type?};
 
-        MediaType -->|Video| VideoLogic;
-        MediaType -->|Bild| CheckCrop;
+    MediaType -->|Video| VideoLogic;
+    MediaType -->|Image| PreProcess["Image Pre-Processing (blocking)"];
 
-        subgraph VideoAblauf ["Video Slideshow (ffmpeg)"]
-            VideoLogic["Video erkannt"] --> ExtractFrames["Frames extrahieren (ffmpeg)"];
-            ExtractFrames --> LoopFrames["Schleife über Frames"];
-            LoopFrames --> BlendFrames["Überblendung (Cross-Fade)"];
-            BlendFrames --> ShowFrame["Frame anzeigen (statisch)"];
-            ShowFrame --> NextFrame{Nächster Frame?};
-            NextFrame -->|Ja| LoopFrames;
-            NextFrame -->|Nein| EndVideo["Ende"];
+    subgraph PreProcessing ["Image Pre-Processing"]
+        style PreProcessing fill:#e0f7fa
+        PreProcess --> LoadImage["Load & Orient Image (PIL)"];
+        LoadImage --> SmartDownscale{"Image > 125% Viewport?"};
+        SmartDownscale --> |Yes| Downscale["Downsizing (im.thumbnail)"];
+        SmartDownscale --> |No| CheckCrop;
+        Downscale --> CheckCrop;
+        CheckCrop{crop_to_aspect_ratio set?};
+        CheckCrop -->|Yes| DoCrop["Crop image to aspect ratio"];
+        CheckCrop -->|No| GpuUpload;
+        DoCrop --> GpuUpload;
+        GpuUpload["Create Texture & Upload to GPU<br>(load_opengl)"];
+    end
+
+    GpuUpload --> StartAnimation["Start Animation<br>(Freeze ended)"];
+    StartAnimation --> IsKenBurns;
+
+    subgraph VideoAblauf ["Video Slideshow (ffmpeg)"]
+        style VideoAblauf fill:#e8f5e9
+        VideoLogic["Video detected"] --> ExtractFrames["Extract Frames (ffmpeg)"];
+        ExtractFrames --> LoopFrames["Loop over Frames"];
+        LoopFrames --> BlendFrames["Cross-Fade"];
+    end
+
+    subgraph KenBurnsAblauf ["Ken Burns Logic (Images)"]
+        style KenBurnsAblauf fill:#fffde7
+        IsKenBurns{kenburns: true?}
+        IsKenBurns -->|No| CheckFit{fit: true?};
+        
+        CheckFit -->|Yes| StaticFit["Fit Image (black borders)"];
+        CheckFit -->|No| StaticCrop["Fill Image (crop)"];
+
+        IsKenBurns -->|Yes| CheckAspectRatio{Aspect Ratio?};
+
+        CheckAspectRatio -->|"Portrait (AR < Viewport)"| PortraitLogic;
+        CheckAspectRatio -->|"Panorama (AR > Screen)"| PanoramaLogic;
+        CheckAspectRatio -->|"Landscape (Other)"| LandscapeLogic;
+
+        subgraph PortraitLogik ["Portrait: Vertical Scroll"]
+            style PortraitLogik fill:#fff3e0
+            PortraitLogic --> PortraitRandomPan{kenburns_random_pan: true?};
+            PortraitRandomPan -->|Yes| PortraitWobble["1. Slight zoom for wobble effect<br>2. Random horizontal pan<br>max. strength: kenburns_portrait_wobble_pct"];
+            PortraitRandomPan -->|No| PortraitNoWobble["No horizontal pan"];
+            
+            PortraitWobble --> PortraitScrollDir;
+            PortraitNoWobble --> PortraitScrollDir;
+
+            PortraitScrollDir{kenburns_portrait_scroll_direction?};
+            PortraitScrollDir -->|'random'| PortraitRandomScroll["Direction random (up/down)"];
+            PortraitScrollDir -->|'up'| PortraitScrollUp["Scrolls from bottom to top"];
+            PortraitScrollDir -->|'down'| PortraitScrollDown["Scrolls from top to bottom"];
+
+            PortraitRandomScroll --> ApplyTransform;
+            PortraitScrollUp --> ApplyTransform;
+            PortraitScrollDown --> ApplyTransform;
         end
 
-        CheckCrop{crop_to_aspect_ratio gesetzt?};
-        CheckCrop -->|Ja| DoCrop["Bild auf Seitenverhältnis zuschneiden"];
-        CheckCrop -->|Nein| IsKenBurns;
-        DoCrop --> IsKenBurns;
+        subgraph PanoramaLogik ["Panorama: Horizontal Scroll"]
+            style PanoramaLogik fill:#f3e5f5
+            PanoramaLogic --> PanoramaZoomDir{kenburns_panorama_zoom_direction?};
+            PanoramaZoomDir -->|'random'| PanoramaRandomZoom["Zoom direction random (in/out)"];
+            PanoramaZoomDir -->|'in'| PanoramaZoomIn["Zooms in"];
+            PanoramaZoomDir -->|'out'| PanoramaZoomOut["Zooms out"];
 
-        subgraph KenBurnsAblauf ["Ken Burns Logic (Bilder)"]
-            IsKenBurns{kenburns: true?}
-            IsKenBurns -->|Nein| CheckFit{fit: true?};
+            PanoramaRandomZoom --> PanoramaZoomPct;
+            PanoramaZoomIn --> PanoramaZoomPct;
+            PanoramaZoomOut --> PanoramaZoomPct;
+
+            PanoramaZoomPct["Zoom strength: kenburns_panorama_zoom_pct"] --> PanoramaScrollDir;
+
+            PanoramaScrollDir{kenburns_panorama_scroll_direction?};
+            PanoramaScrollDir -->|'random'| PanoramaRandomScrollH["Direction random (left/right)"];
+            PanoramaScrollDir -->|'left'| PanoramaScrollLeft["Scrolls to the left"];
+            PanoramaScrollDir -->|'right'| PanoramaScrollRight["Scrolls to the right"];
+
+            PanoramaRandomScrollH --> PanoramaWobbleCheck;
+            PanoramaScrollLeft --> PanoramaWobbleCheck;
+            PanoramaScrollRight --> PanoramaWobbleCheck;
+
+            PanoramaWobbleCheck{kenburns_random_pan: true?};
+            PanoramaWobbleCheck -->|Yes| PanoramaWobble["Random vertical pan (Wobble)"];
+            PanoramaWobbleCheck -->|No| PanoramaNoWobble["No vertical pan"];
             
-            CheckFit -->|Ja| StaticFit["Bild einpassen (schwarze Ränder)"];
-            CheckFit -->|Nein| StaticCrop["Bild füllen (Zuschnitt)"];
-
-            IsKenBurns -->|Ja| CheckAspectRatio{Seitenverhältnis?};
-
-            CheckAspectRatio -->|"Hochformat (AR < Viewport)"| PortraitLogic;
-            CheckAspectRatio -->|"Panorama (AR > Screen)"| PanoramaLogic;
-            CheckAspectRatio -->|"Querformat (Sonst)"| LandscapeLogic;
-
-            subgraph PortraitLogik ["Hochformat: Vertikaler Scroll"]
-                PortraitLogic --> PortraitRandomPan{kenburns_random_pan: true?};
-                PortraitRandomPan -->|Ja| PortraitWobble["1. Leichter Zoom für Wobble-Effekt<br>2. Zufälliger horizontaler Pan<br>max. Stärke: kenburns_portrait_wobble_pct"];
-                PortraitRandomPan -->|Nein| PortraitNoWobble["Kein horizontaler Pan"];
-                
-                PortraitWobble --> PortraitScrollDir;
-                PortraitNoWobble --> PortraitScrollDir;
-
-                PortraitScrollDir{kenburns_portrait_scroll_direction?};
-                PortraitScrollDir -->|'random'| PortraitRandomScroll["Richtung zufällig (up/down)"];
-                PortraitScrollDir -->|'up'| PortraitScrollUp["Scrollt von unten nach oben"];
-                PortraitScrollDir -->|'down'| PortraitScrollDown["Scrollt von oben nach unten"];
-
-                PortraitRandomScroll --> ApplyTransform;
-                PortraitScrollUp --> ApplyTransform;
-                PortraitScrollDown --> ApplyTransform;
-            end
-
-            subgraph PanoramaLogik ["Panorama: Horizontaler Scroll"]
-                PanoramaLogic --> PanoramaZoomDir{kenburns_panorama_zoom_direction?};
-                PanoramaZoomDir -->|'random'| PanoramaRandomZoom["Zoom-Richtung zufällig (in/out)"];
-                PanoramaZoomDir -->|'in'| PanoramaZoomIn["Zoomt hinein"];
-                PanoramaZoomDir -->|'out'| PanoramaZoomOut["Zoomt heraus"];
-
-                PanoramaRandomZoom --> PanoramaZoomPct;
-                PanoramaZoomIn --> PanoramaZoomPct;
-                PanoramaZoomOut --> PanoramaZoomPct;
-
-                PanoramaZoomPct["Zoom-Stärke: kenburns_panorama_zoom_pct"] --> PanoramaScrollDir;
-
-                PanoramaScrollDir{kenburns_panorama_scroll_direction?};
-                PanoramaScrollDir -->|'random'| PanoramaRandomScrollH["Richtung zufällig (left/right)"];
-                PanoramaScrollDir -->|'left'| PanoramaScrollLeft["Scrollt nach links"];
-                PanoramaScrollDir -->|'right'| PanoramaScrollRight["Scrollt nach rechts"];
-
-                PanoramaRandomScrollH --> PanoramaWobbleCheck;
-                PanoramaScrollLeft --> PanoramaWobbleCheck;
-                PanoramaScrollRight --> PanoramaWobbleCheck;
-
-                PanoramaWobbleCheck{kenburns_random_pan: true?};
-                PanoramaWobbleCheck -->|Ja| PanoramaWobble["Zufälliger vertikaler Pan (Wobble)"];
-                PanoramaWobbleCheck -->|Nein| PanoramaNoWobble["Kein vertikaler Pan"];
-                
-                PanoramaWobble --> ApplyTransform;
-                PanoramaNoWobble --> ApplyTransform;
-            end
-
-            subgraph LandscapeLogik ["Querformat: Zoom"]
-                LandscapeLogic --> LandscapeZoomDir{kenburns_landscape_zoom_direction?};
-                LandscapeZoomDir -->|'random'| LandscapeRandomZoom["Zoom-Richtung zufällig (in/out)"];
-                LandscapeZoomDir -->|'in'| LandscapeZoomIn["Zoomt hinein (100% -> 1xx%)"];
-                LandscapeZoomDir -->|'out'| LandscapeZoomOut["Zoomt heraus (1xx% -> 100%)"];
-
-                LandscapeRandomZoom --> LandscapeZoomPct;
-                LandscapeZoomIn --> LandscapeZoomPct;
-                LandscapeZoomOut --> LandscapeZoomPct;
-
-                LandscapeZoomPct["Zoom-Stärke zufällig<br>max. Stärke: kenburns_landscape_zoom_pct"];
-                LandscapeZoomPct --> LandscapeRandomPan{kenburns_random_pan: true?};
-                LandscapeRandomPan -->|Ja| LandscapeWobble["Zufälliger horizontaler & vertikaler Pan<br>max. Stärke: kenburns_landscape_wobble_pct"];
-                LandscapeRandomPan -->|Nein| LandscapeNoWobble["Zentrierter Zoom ohne Pan"];
-                
-                LandscapeWobble --> ApplyTransform;
-                LandscapeNoWobble --> ApplyTransform;
-            end
-            
-            ApplyTransform["Transformation wird berechnet & angewendet"];
+            PanoramaWobble --> ApplyTransform;
+            PanoramaNoWobble --> ApplyTransform;
         end
+
+        subgraph LandscapeLogik ["Landscape: Zoom"]
+            style LandscapeLogik fill:#fce4ec
+            LandscapeLogic --> LandscapeZoomDir{kenburns_zoom_direction?};
+            LandscapeZoomDir -->|'random'| LandscapeRandomZoom["Zoom direction random (in/out)"];
+            LandscapeZoomDir -->|'in'| LandscapeZoomIn["Zooms in (100% -> 1xx%)"];
+            LandscapeZoomDir -->|'out'| LandscapeZoomOut["Zooms out (1xx% -> 100%)"];
+
+            LandscapeRandomZoom --> LandscapeZoomPct;
+            LandscapeZoomIn --> LandscapeZoomPct;
+            LandscapeZoomOut --> LandscapeZoomPct;
+
+            LandscapeZoomPct["Zoom strength random<br>max. strength: kenburns_landscape_zoom_pct"];
+            LandscapeZoomPct --> LandscapeRandomPan{kenburns_random_pan: true?};
+            LandscapeRandomPan -->|Yes| LandscapeWobble["Random horizontal & vertical pan<br>max. strength: kenburns_landscape_wobble_pct"];
+            LandscapeRandomPan -->|No| LandscapeNoWobble["Centered zoom without pan"];
+            
+            LandscapeWobble --> ApplyTransform;
+            LandscapeNoWobble --> ApplyTransform;
+        end
+        
+        ApplyTransform["Transformation is calculated & applied"];
+    end

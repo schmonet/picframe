@@ -757,3 +757,224 @@ Applied when the image aspect ratio is **wider** than the screen aspect ratio.
     *   Duration of the Ken Burns effect (how long the image is shown).
 *   **`fade_time`** (float)
     *   Duration of the cross-fade transition between images.
+
+## Test-Konfiguration (15.02.2026)
+
+*   **Anzeigedauer (`time_delay`):** 60.0 Sekunden
+*   **Überblendzeit (`fade_time`):** 20.0 Sekunden
+*   **Ken Burns Effekt:** Aktiviert (`true`)
+*   **Zufälliges Schwenken (`kenburns_random_pan`):** Aktiviert (erkennbar an "Wobble" und Pan-Koordinaten)
+*   **Zoom-Einstellungen:**
+    *   Portrait Wobble: 8.0%
+    *   Landscape Zoom: Variabel (bis ca. 38% beobachtet)
+    *   Panorama Zoom: ca. 10%
+*   **Hardware:** Raspberry Pi Zero 2 (erkennbar an den Ladezeiten bei hohen Auflösungen)
+
+### Analyse der Ladezeiten und Übergänge
+
+Die folgende Tabelle zeigt die zeitlichen Abläufe.
+*   **Ladezeit:** Die Zeitspanne zwischen der Auswahl des Bildes durch den Controller ("Next item") und dem Beginn der Überblendung ("Transitioning"). Während dieser Zeit ist die Benutzeroberfläche blockiert ("Freeze" des vorherigen Bildes).
+*   **Status:**
+    *   🟢 **OK:** Ladezeit < 3 Sekunden (kaum spürbar).
+    *   🟡 **Mittel:** Ladezeit 3–10 Sekunden (kurzer Hänger).
+    *   🔴 **Lang:** Ladezeit > 10 Sekunden (deutlicher Stillstand des vorherigen Bildes).
+
+| Zeitstempel | Datei | Modus | Ladezeit | Status | Details zum Ken Burns / Anmerkungen |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Durchlauf 1** | | | | | |
+| 14:00:23 | C01 (80kB) | Portrait | 0.6s | 🟢 | Scroll down, Zoom 8.00% |
+| 14:01:24 | C02 (316kB) | Landscape | 0.9s | 🟢 | Zoom IN 22.02% |
+| 14:02:25 | C03 (381kB) | Landscape | 1.0s | 🟢 | Zoom OUT 7.25% |
+| 14:03:26 | C04 (128kB) | Landscape | 0.5s | 🟢 | Zoom IN 34.39% |
+| 14:04:26 | C05 (105kB) | Landscape | 0.6s | 🟢 | Zoom OUT 7.37% |
+| 14:05:27 | C06 (1MB) | Landscape | 0.6s | 🟢 | Zoom OUT 38.36% |
+| 14:06:28 | C07 (690kB) | Landscape | 1.0s | 🟢 | Downsizing: 2048x1536 -> 2016x1512 |
+| 14:07:30 | C08 (1MB) | Landscape | 2.2s | 🟢 | Downsizing: 3000x2000 -> 2268x1512 |
+| 14:08:32 | C09 (3MB) | Landscape | **36.1s** | 🔴 | **Freeze!** Downsizing 12MP (4000x3000). CPU-Limit. |
+| 14:10:11 | C10 (6MB) | Landscape | 1.7s | 🟢 | Downsizing 12MP. Überraschend schnell (Cache/Buffer?). |
+| 14:11:13 | C11 (6MB) | Landscape | 2.8s | 🟢 | Downsizing 12MP. |
+| 14:12:16 | C12 (7MB) | Landscape | **57.1s** | 🔴 | **Freeze!** Downsizing 16MP (5312x2988). Sehr hohe Last. |
+| 14:14:14 | C14 (9MB) | Landscape | **27.3s** | 🔴 | **Freeze!** Downsizing 24MP (6000x4000). |
+| 14:15:43 | C15 (5MB) | Landscape | 6.7s | 🟡 | Downsizing 24MP. |
+| 14:16:50 | C16 (15MB) | Landscape | 4.4s | 🟡 | Downsizing 24MP (Nikon Z6). |
+| 14:17:55 | C17 (10MB) | Landscape | **20.2s** | 🔴 | **Freeze!** Downsizing 24MP. |
+| 14:19:16 | C18 (8MB) | Landscape | **44.0s** | 🔴 | **Freeze!** Downsizing 16MP. |
+| 14:21:03 | C19 (6MB) | Panorama | **43.6s** | 🔴 | **Freeze!** Downsizing Panorama (8192x1856). |
+| 14:22:48 | C20 (7MB) | Landscape | **44.6s** | 🔴 | **Freeze!** Downsizing 16MP. |
+| **Durchlauf 2** | | | | | |
+| 14:24:33 | C01 (80kB) | Portrait | 0.5s | 🟢 | Scroll up, Zoom 8.00% |
+| ... | (C02-C08) | ... | < 2s | 🟢 | Schnelle Ladezeiten wie in Lauf 1. |
+| 14:32:42 | C09 (3MB) | Landscape | **36.7s** | 🔴 | **Freeze!** Reproduzierbar langsam (vgl. 36.1s). |
+| 14:34:21 | C10 (6MB) | Landscape | 1.7s | 🟢 | Wieder schnell. |
+| 14:36:25 | C12 (7MB) | Landscape | **51.5s** | 🔴 | **Freeze!** Reproduzierbar langsam (vgl. 57.1s). |
+| 14:38:18 | C14 (9MB) | Landscape | **16.2s** | 🔴 | Schneller als Lauf 1 (27s), aber immer noch lang. |
+| 14:39:44 | C15 (5MB) | Landscape | 4.4s | 🟡 | Akzeptabel für 24MP. |
+| 14:40:49 | C16 (15MB) | Landscape | 8.2s | 🟡 | Etwas langsamer als Lauf 1 (4.4s). |
+| 14:41:58 | C17 (10MB) | Landscape | 4.2s | 🟡 | Viel schneller als Lauf 1 (20.2s). |
+| 14:43:03 | C18 (8MB) | Landscape | **41.9s** | 🔴 | **Freeze!** Reproduzierbar langsam (vgl. 44.0s). |
+
+### Zusammenfassung
+*   **Kleine Bilder (< 2MP):** Laufen perfekt flüssig mit Ladezeiten unter 1 Sekunde.
+*   **Große Bilder (> 12MP):** Verursachen auf dem Raspberry Pi Zero 2 massive Verzögerungen (bis zu 57 Sekunden). Während dieser Zeit "friert" das vorherige Bild ein, da die CPU mit dem Herunterskalieren (`Downsizing`) beschäftigt ist.
+*   **Varianz:** Manche 24MP Bilder laden in 4 Sekunden, andere brauchen 20-30 Sekunden. Dies hängt vermutlich davon ab, ob der schnelle "Draft-Modus" von Pillow (für JPEGs) greift oder ob das Bild komplett geladen und dann softwareseitig skaliert werden muss.
+
+## Video-Slideshow Performance-Analyse (15.02.2026)
+
+### Test-Konfiguration
+*   **Hardware:** Raspberry Pi Zero 2
+*   **Video-Modus:** `ffmpeg` (Frame-Extraktion)
+*   **Einstellungen:**
+    *   `video_slideshow_time_delay`: 4.0s (Anzeigedauer pro Frame)
+    *   `video_slideshow_fade_time`: 2.0s (Überblendzeit)
+    *   `video_slideshow_quality`: 3 (Hohe Qualität)
+    *   `video_slideshow_step_time`: 10s (Abstand zwischen Frames im Video)
+
+### Metriken
+*   **Start-Verzögerung:** Zeit vom Startbefehl bis das erste Frame geladen ist (Wartezeit auf ffmpeg).
+*   **Wait (Wartezeit):** Zeit, die der Viewer auf das *nächste* Frame warten musste.
+    *   Ziel: **0.00s** (Puffer gefüllt).
+    *   > 0.5s: ffmpeg kommt nicht hinterher (Ruckler).
+*   **Blend (Überblendung):** Tatsächliche Dauer der Überblendung.
+    *   Ziel: **2.00s**.
+    *   > 3.0s: Systemlast zu hoch für flüssige Grafik.
+
+### Ergebnisse pro Video
+
+| Video-Datei | Auflösung | Bitrate (geschätzt) | Start-Verzögerung | Avg Wait | Max Wait | Status | Analyse |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **E1** (FFMPEG) | 1280x720 | 8 Mbps | ~37s | 0.01s | 0.13s | 🟢 **Perfekt** | Flüssige Wiedergabe. Puffer ist immer gefüllt. |
+| **E2** (GOPRO) | 1280x960 | 16 Mbps | ~40s | 1.08s | **4.35s** | 🟡 **Grenzwertig** | ffmpeg ist langsamer als die Wiedergabe (4s). Der Viewer muss oft 1-4 Sekunden auf das nächste Bild warten. |
+| **E3** (SONY) | 1920x1080 | 25 Mbps | ~58s | **8.50s** | **16.38s** | 🔴 **Überlastet** | Unspielbar. Der Pi Zero 2 schafft es nicht, 1080p High-Bitrate schnell genug zu dekodieren und zu skalieren. Wartezeiten sind länger als die Anzeigezeit. |
+| **E5** (FFMPEG) | 1280x720 | 3 Mbps | ~38s | 0.15s | 4.17s | 🟢 **Gut** | Überwiegend flüssig (239 Frames). Gelegentliche Spikes (z.B. Frame 16, 164) deuten auf kurzzeitige IO- oder CPU-Engpässe hin. |
+| **E7** (Super8) | 960x720 | 6 Mbps | ~17s | 0.45s | 3.54s | 🟡 **OK** | Akzeptabel, aber ffmpeg läuft am Limit. Gelegentliche Wartezeiten von 1-3 Sekunden. |
+
+### Zusammenfassung & Empfehlung
+
+1.  **Auflösung & Bitrate:**
+    *   **720p (HD):** Funktioniert zuverlässig auf dem Pi Zero 2.
+    *   **1080p (Full HD):** Ist für die On-the-Fly Extraktion **zu anspruchsvoll**. Die CPU/GPU-Kombination kommt beim Dekodieren, Skalieren und JPEG-Komprimieren nicht hinterher.
+    *   **Empfehlung:** Videos für den Pi Zero 2 idealerweise auf 720p konvertieren oder `video_slideshow_quality` reduzieren (höherer Wert, z.B. 10-15), um die JPEG-Komprimierung zu beschleunigen.
+
+2.  **Startzeiten:**
+    *   Die Initialisierung dauert konstant **30-60 Sekunden**. In dieser Zeit muss ffmpeg starten und die ersten 3 Frames produzieren.
+    *   Dies ist auf dem Pi Zero 2 normal (IO/CPU Limit).
+
+3.  **Systemlast:**
+    *   Die hohen **Blend-Zeiten** (teilweise 5-12s bei Video E3) zeigen, dass das System so stark mit ffmpeg beschäftigt ist, dass selbst die GPU-Animation (pi3d) verlangsamt wird.
+
+
+### Timing Logic (Example with `time_delay: 60.0`, `fade_time: 20.0`)
+
+*   **Loading (Downsizing):** Duration X (e.g., 30s). The previous image remains frozen on screen ("Freeze").
+*   **Start (T=0):** The new image is ready. Logs are written.
+*   **Phase 1 (T=0 to T=20):** Transition. The new image fades in. Ken Burns effect starts.
+*   **Phase 2 (T=20 to T=60):** Image is fully visible. Ken Burns effect continues.
+*   **End (T=60):** The 60 seconds are up. The controller wakes up and loads the next image.
+
+### Test Files
+
+*   C01-FotoScan_578x519_80kB.jpg
+*   C02-CanonIXUS_1525x1025_316kB.jpg
+*   C03-CanonIXUS_1535x1035_381kB.jpg
+*   C04-FotoScan_956x578_128kB.jpg
+*   C05-Resized_1600x900_105kB.jpg
+*   C06-CanonPowershot_1600x1200_1MB.jpg
+*   C07-DiMAGExi_2048x1536_690kB.jpg
+*   C08-NiconCoolscan_3000x2000_1MB.jpg
+*   C09-SamsungS22_4000x3000_3MB.jpg
+*   C10-Pocophone_4032x3024_6MB.jpg
+*   C11-Pocophone_4032x3024_6MB.jpg
+*   C12-LGG5_5312x2988_7MB.jpg
+*   C14-SonyNex7_6000x4000_9MB.jpg
+*   C15-SonyNex7_6000x4000_5MB.jpg
+*   C16-NikonZ6_6048x4024_15MB.jpg
+*   C17-SonyNex7_6000x4000_10MB.jpg
+*   C18-LGG5_5312x2988_8MB.jpg
+*   C19-SonyNex7_8192x1856_6MB.jpg
+*   C20-LGG5_5312x2988_7MB.jpg
+
+### Analysis of Timings
+
+*   **Small Images (e.g., C01-C07):**
+    *   `Load` is between 0.06s and 0.64s.
+    *   `Resize` is 0.00s, as the images do not exceed the 125% threshold and do not need to be reduced via `thumbnail()`.
+    *   `Fade` is constant at ~20.04s.
+    *   **Behavior:** Perfect.
+
+*   **Large Images (e.g., C09, C10, C12, C18, C19, C20):**
+    *   `Resize` takes between 25s and 40s here. This is the CPU-intensive `thumbnail()` operation.
+    *   `Load` (Total load time) is correspondingly high (e.g., 38s, 43s, 58s, 68s).
+    *   `Fade` is nevertheless constant at ~20.05s.
+    *   **Behavior:** Perfect. The system freezes during loading as expected, but the transition afterwards is buttery smooth and precisely timed.
+
+*   **Medium-sized Images (e.g., C08, C14, C15, C16, C17):**
+    *   Something interesting can be seen here: `Resize` is 0.00s, although the images are large. This is because they do not exceed the 125% threshold.
+    *   `Load` still takes a long time (25s - 32s). This is the time Pillow/pi3d needs to decode the large (but not *huge*) image file and upload it as a texture to the GPU.
+    *   `Fade` is also constant here at ~20.00s.
+    *   **Behavior:** Perfect. This shows that the optimization is effective and unnecessary `Downsizing` is avoided, yet the timing control still functions correctly.
+
+### Summary
+
+The timing control for the transitions now works exactly as desired. Load times are correctly decoupled from the animation time, resulting in buttery smooth and precisely timed cross-fades. The downsizing optimization also works as expected.
+
+### Logic of `pir_manager.py`
+
+The control is based on **inactivity** (time since last motion) and **time of day** (Day/Night).
+
+#### The 4 States
+
+1.  **ON (Normal Operation)**
+    *   **Trigger:** Motion detected or script start.
+    *   **Actions:**
+        *   Display: **ON** (via `cec-client`).
+        *   Service: **Started** (`picframe.service`).
+        *   Slideshow: **Play** (Unpause via HTTP).
+        *   WiFi: Explicitly unblocked (`rfkill unblock wifi`).
+
+2.  **HOLD (Pause)**
+    *   **Trigger:** No motion for **60 minutes** (`3600` seconds).
+    *   **Actions:**
+        *   Slideshow: **Pause** (via HTTP). The current image remains static.
+        *   Display: Remains **ON**.
+
+3.  **BLACK (Screen Off)**
+    *   **Trigger:** No motion for **2 hours** (`7200` seconds).
+    *   **Actions:**
+        *   Display: **OFF** (Standby via `cec-client`).
+        *   Slideshow: Remains paused.
+
+4.  **OFF (Night Mode)**
+    *   **Trigger:** Time between **23:00 and 06:00** (and no motion).
+    *   **Actions:**
+        *   Display: **OFF**.
+        *   Service: **Stopped** (`systemctl stop picframe.service`). This saves the most power as CPU load drops.
+
+#### Specials regarding Motion (PIR)
+
+*   **Immediate Wake-up:** Regardless of the state (HOLD, BLACK, OFF), motion immediately switches everything on (State **ON**).
+*   **Night Override:** If motion is detected at night, the system wakes up and **stays on for the rest of the night** (ignores the night schedule until 06:00 morning), so it doesn't turn off immediately if you stay still for a moment.
+
+### Status Icons & Visual Feedback
+The viewer now displays icons in the bottom right corner to indicate specific system states:
+*   **`play.png`**: Normal slideshow operation.
+*   **`pause.png`**: Slideshow paused (via menu or PIR sensor).
+*   **`sync.png`**: Playlist is updating or scanning for new files.
+*   **`download.png`**: Sync script is currently downloading new files from the server.
+*   **`offline.png`**: SMB Server is unreachable.
+*   **`nowlan.png`**: WiFi interface is blocked (e.g., during Night Mode).
+*   **`skipf.png`**: Video slideshow (ffmpeg) is playing.
+*   **`eject.png`**: No files found in cache.
+
+### Synchronization Script (`sync_photos.sh`)
+*   **Unified Cache**: Uses a single directory structure for both photos and videos.
+*   **Smart Quotas**: Manages separate storage quotas for photos and videos.
+*   **Priority Logic**: Prioritizes photo synchronization; videos are only synced if the photo quota allows.
+*   **Auto-Start**: Automatically triggered by the application if the local cache is found to be empty on startup.
+
+### Console Stealth Mode (TTY)
+To provide a clean aesthetic, the HDMI console background is set to black after boot, hiding the login prompt and boot messages.
+*   **Enable**: Run `sudo ./scripts/set_tty_color.sh` to install the systemd service.
+*   **Unhide (via SSH)**: To make the console visible again for maintenance (e.g., to log in locally), run the following command via SSH:
+    ```bash
+    sudo sh -c 'setterm -default > /dev/tty1'
+    ```

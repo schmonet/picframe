@@ -1,375 +1,164 @@
-2026-02-08
-- Performance & Stabilität:
-  - controller.py: Timer-Logik korrigiert. Der Anzeigetimer (time_delay) wird nun erst nach dem vollständigen Laden und Anzeigen des Bildes zurückgesetzt. Dies verhindert das Überspringen von Bildern bei langen Ladezeiten (IO-Wait).
-  - viewer_display.py: Übergänge (fade_time) sind nun zeitbasiert und nicht mehr framebasiert. Dies garantiert konstante Übergangszeiten auch bei niedrigen FPS.
-  - viewer_display.py: "Late Timestamping" implementiert. Der Startzeitpunkt für Übergänge wird erst nach dem Textur-Upload gesetzt, um visuelle Sprünge zu vermeiden.
-  - viewer_display.py: Explizite Garbage Collection (gc.collect()) vor Übergängen eingefügt, um Ruckler während der Animation zu minimieren.
-  - Logging: Erweitertes Logging für Downsizing und Transitions-Timing zur besseren Fehleranalyse hinzugefügt.
+2026-03-07
+- Features:
+  - **Status Icons**: Implemented visual feedback system in `viewer_display.py`. Icons are now displayed for states: Play, Pause, Sync, Download, Offline, No-WiFi, Video-Playback, and Empty Cache.
+  - **Stealth Console**: Updated `set_tty_color.sh` to set the TTY background to black, effectively hiding the login prompt and text on the HDMI output.
+  - **Auto-Sync**: `model.py` now automatically triggers `sync_photos.sh` in the background if the image cache is empty on startup.
+  - **Night Mode WiFi**: `pir_manager.py` now disables the WiFi interface (`rfkill`) during night mode to save power and sets a status flag.
+- Stability:
+  - **Startup Fix**: Resolved a "Black Screen" loop in `model.py` when starting with an empty cache. The system now distinguishes between "cache building" and "empty folders" and displays the "No Files" image immediately instead of blocking.
+  - **Robustness**: Increased wait times in `set_tty_color.sh` to prevent race conditions with the login prompt service.
+
+2026-02-23
+- Performance & Stability:
+  - viewer_display.py: Optimized transition timings. Load times (IO/CPU) are now fully decoupled from animation time, guaranteeing constant fade times.
+  - viewer_display.py: GPU upload (`load_opengl`) for all textures (image, text, overlay) is now forced before the timer starts. This prevents stuttering ("freezes") at the start of the animation.
+  - viewer_display.py: Implemented intelligent downsizing. Images are only resized if they exceed the target resolution by more than 125% to avoid unnecessary CPU load.
+  - viewer_display.py: Added extended logging for performance analysis (`Transition done: Fade=... Load=...`).
+- Features:
+  - viewer_display.py: Adjusted text overlay timing. Metadata is now only displayed after the visual cross-fade (`fade_time`) is complete.
+- Bugfixes:
+  - start.py: Fixed duplicate log entries by correctly initializing logging handlers.
 
 2026-02-09
 - Features:
-  - Panorama-Modus: Neue Logik für Bilder mit extremem Seitenverhältnis (breiter als der Bildschirm).
-    - Implementierung von horizontalem Scrolling (Links/Rechts) statt nur Zoom.
-    - Anpassung des Smart-Downscalings für Panoramen (Fit-Height statt Fit-Width).
-    - Re-Aktivierung des Zooms auch im Panorama-Modus für dynamischere Effekte.
-- Konfiguration:
-  - configuration.yaml: Neue Parameter hinzugefügt:
+  - Panorama Mode: New logic for images with extreme aspect ratios (wider than the screen).
+    - Implementation of horizontal scrolling (Left/Right) instead of just zoom.
+    - Adaptation of smart downscaling for panoramas (Fit-Height instead of Fit-Width).
+    - Re-activation of zoom in panorama mode for more dynamic effects.
+- Configuration:
+  - configuration.yaml: Added new parameters:
     - kenburns_panorama_scroll_direction
     - kenburns_panorama_zoom_direction
     - kenburns_panorama_zoom_pct
     - panorama_crop_to_aspect_ratio
 - Bugfixes:
-  - start.py: Import-Fehler behoben. Module (model, controller, viewer_display) werden nun explizit importiert, um zirkuläre Abhängigkeiten und Initialisierungsfehler zu vermeiden.
-- Dokumentation & Projektverwaltung:
-  - README.md: Dokumentation um neue Features (Panorama) und Performance-Optimierungen (Smart Downscaling Tabelle) erweitert.
-  - workflow.md: Mermaid-Diagramm um Panorama-Logik und Video-Ablauf ergänzt und Syntaxfehler behoben.
-  - .gitignore: Datei hinzugefügt, um Logs, Cache und temporäre Dateien vom Git-Tracking auszuschließen.
+  - start.py: Fixed import error. Modules (`model`, `controller`, `viewer_display`) are now explicitly imported to avoid circular dependencies and initialization errors.
+- Documentation & Project Management:
+  - README.md: Extended documentation with new features (Panorama) and performance optimizations (Smart Downscaling table).
+  - workflow.md: Added panorama logic and video flow to Mermaid diagram and fixed syntax errors.
+  - .gitignore: Added file to exclude logs, cache, and temporary files from git tracking.
 
+2026-02-08
+- Performance & Stability:
+  - controller.py: Corrected timer logic. The display timer (`time_delay`) is now reset only after the image has been fully loaded and displayed. This prevents skipping images during long load times (IO-Wait).
+  - viewer_display.py: Transitions (`fade_time`) are now time-based rather than frame-based. This guarantees constant transition times even at low FPS.
+  - viewer_display.py: Implemented "Late Timestamping". The start time for transitions is set only after texture upload to avoid visual jumps.
+  - viewer_display.py: Inserted explicit garbage collection (`gc.collect()`) before transitions to minimize stuttering during animation.
+  - Logging: Added extended logging for downsizing and transition timing for better error analysis.
 
-## 2025-05-21
+2025-11-30
+- **Goal: Stable Video Integration as Frame Sequence (Alternative to mpv)**
+  - Attempt 1: Direct Integration in `ImageCache`. Failed due to race condition with `pi3d` initialization.
+  - Attempt 2: "Just-in-Time" Frame Extraction. Failed due to import-time conflict with `subprocess`.
+  - Attempt 3: Complete Cleanup and Restructuring. Failed due to subtle import order issues.
+  - Strategy Change: External Preprocessing Process. Decided to use an external script (`video_preprocessor.py`) to avoid `subprocess` calls within the main process.
+  - Attempt 5: Radical Cleanup and Isolation. Failed due to `import subprocess` in `viewer_display.py`.
+  - Attempt 6: Late Import of `subprocess`. Failed.
 
-### src/picframe/viewer_display.py
-- **Ken Burns Optimierung:**
-  - Vollständige Überarbeitung der Transformations-Logik zur Behebung von Kachelungseffekten (Tiling) und Verzerrungen bei Zoom-Faktoren.
-  - Korrektur der Offset-Berechnung: Umstellung auf positive Verschiebung (`+ shift`), damit Bewegungsrichtungen (z.B. "Down") intuitiv und korrekt ausgeführt werden (Start oben -> Ende unten).
-  - Implementierung einer korrekten "Aspect Fill"-Berechnung ("Sichtfenster"), die sicherstellt, dass das Bild den Bildschirm füllt, ohne gestaucht zu werden.
-  - Fix für Übergangs-Glitches: Shader-Uniforms werden nun beim Textur-Wechsel explizit vom Vorder- auf den Hintergrund kopiert, um Sprünge in der Darstellung zu verhindern.
-  - Entfernung veralteter oder fehlerhafter Invertierungs-Logik bei der Skalierung.
+2025-11-29
+- **Goal: Bypass `pi3d` startup conflict**
+  - Attempt 3: "Just-in-Time" Frame Extraction. Failed.
+  - Attempt 4: Optimization of Start Order. Failed.
 
-### src/picframe/viewer_display.py
-- **Video Slideshow Integration:**
-  - Implementierung der Methode `play_video_slideshow`: Ermöglicht die Wiedergabe von Videos als Sequenz von extrahierten Standbildern (via `ffmpeg`).
-  - Dies erlaubt nahtlose Überblendungen zwischen Video-Frames und Bildern ohne den `pi3d`-Kontext neu starten zu müssen (im Gegensatz zur `mpv`-Methode).
-  - Logik zur Steuerung des externen `ffmpeg`-Prozesses, Pufferung von Frames und Throttling zur Ressourcenschonung auf dem Pi Zero.
+2025-11-28
+- **Goal: Stable Video Integration as Frame Sequence (Alternative to mpv)**
+  - Attempt 1: Direct Integration in `ImageCache`. Failed.
+  - Attempt 2: Manual Configuration Adjustments. Failed.
 
-### configuration.yaml
-- **Neue Parameter für Video-Slideshow:**
-  - `video_playback_mode`: Auswahl zwischen `mpv` (externer Player mit Neustart) und `ffmpeg` (nahtlose Slideshow).
-  - `video_slideshow_step_time`: Zeitabstand zwischen den zu extrahierenden Keyframes (in Sekunden).
-  - `video_slideshow_fade_time`: Überblendzeit zwischen den extrahierten Frames.
-  - `video_slideshow_time_delay`: Anzeigedauer pro extrahiertem Frame.
-  - `video_slideshow_quality`: Qualität der extrahierten JPEGs (2-31).
-  - `video_slideshow_temp_dir`: Pfad für temporäre Dateien (empfohlen: USB-Stick oder RAM-Disk zur Schonung der SD-Karte).
-  - `video_slideshow_pillarbox_pct`: Optionale schwarze Ränder für nicht-16:9 Inhalte.
+2025-11-18
+- feat(viewer_display): Implemented robust method to black out screen during video transitions using `dd`.
+- feat(install): Created comprehensive `install.sh` script.
+- refactor(interface_peripherals): Mouse pointer is now disabled directly in `pi3d`.
 
-### scripts/
-- **Neu:** `set_tty_color.sh`
-  - Skript zum dauerhaften Ändern der TTY-Konsolenfarbe (Hintergrund Weiß/Grau).
-  - Dient dazu, den optischen Übergang zwischen Boot-Sequenz und PicFrame-Start zu glätten und Textausgaben zu verbergen.
+2025-11-17
+- fix(watcher): Restart signal for videos is now passed via environment variable (`PICFRAME_RESTART_CODE`).
+- refactor(viewer_display): Radical simplification of `play_video` method. Removed unstable manual screen coloring attempts.
+- chore(troubleshooting): Systematic investigation of screen control methods.
 
-### test/
-- **Neu:** `test_bulk_video_player.py`
-  - Tool zum automatisierten Massentest von Videodateien in einem Verzeichnis.
-  - Nutzt `mpv` zum Abspielen und `ffprobe` zum Sammeln von Metadaten.
-  - Erstellt eine detaillierte Markdown-Tabelle mit Performance-Metriken (FPS, Dropped Frames, Laufzeit).
-- **Neu:** `test_video_slide_show.py`
-  - Standalone-Testskript für die neue `ffmpeg`-basierte Frame-Extraktions-Logik.
-  - Ermöglicht das Testen der Slideshow-Funktion isoliert von der Hauptanwendung.
-
-
-2025-01-05
-- Feature: Added `video_slideshow_quality` configuration option to control JPEG quality of extracted video frames (lower value = higher quality).
-- Improvement: Enabled hardware acceleration for H.264 video decoding on Raspberry Pi (`h264_v4l2m2m`) in `VideoExtractor`.
-- Improvement: Correct handling of anamorphic videos (non-square pixels) to prevent display distortion; videos are now correctly scaled and padded to the display resolution.
-- Improvement: Implemented smart process throttling for `ffmpeg` to reduce CPU and I/O load by pausing extraction when the frame buffer is sufficiently filled.
-- Fix: Resolved `XDG_RUNTIME_DIR` environment variable issues when running as a systemd service without a desktop environment.
-- Fix: Fixed black screen freezes and transition artifacts during video playback start/stop.
-- Fix: Ensured `ffmpeg` process is correctly paused and resumed to prevent deadlocks in the slideshow loop.
-
-2025-05-24
-----------
-
-- **Erstellung von `test/test_bulk_video_player.py`:**
-  - Ein neues Python-Skript wurde entwickelt, um die Videowiedergabe systematisch zu testen und die Performance verschiedener Video-Dateien zu bewerten.
-  - Das Skript findet alle Videos im Verzeichnis `test/videos/`, spielt sie mit `mpv` ab und sammelt detaillierte Logs.
-  - Metadaten wie Codec, Auflösung und Dauer werden mit `ffprobe` ausgelesen.
-  - Die Ergebnisse werden in einer übersichtlichen Markdown-Tabelle zusammengefasst, die Metriken wie effektive FPS, Laufzeit und Fehlerdetails enthält.
-
-- **Fehlerbehebung und Verfeinerung von `test_bulk_video_player.py`:**
-  - Implementierung der Auslesung der Display-Bildwiederholrate aus `/sys/kernel/debug/dri/0/state`, was die Notwendigkeit von `sudo`-Rechten mit sich brachte.
-  - Behebung eines Problems, bei dem `mpv` unter `sudo` den GPU-Kontext nicht initialisieren konnte.
-  - Untersuchung und Lösung von Performance-Problemen, die durch verschiedene `mpv`-Parameter (`--vo=drm`, `--hwdec=auto`) und Umgebungsvariablen (`DISPLAY=:0`) verursacht wurden.
-  - Nach mehreren Iterationen wurde die Komplexität reduziert. Die finale, stabile Lösung erfordert, das Skript direkt mit `sudo` auszuführen und `mpv` mit minimalen Parametern aufzurufen, damit es die optimale Konfiguration für die Hardware-Beschleunigung selbstständig finden kann.
-
-- **Dokumentation:**
-  - `Readme.md` wurde um eine Beschreibung von `test_bulk_video_player.py` und `test_bulk_video_player.log` erweitert.
-  - Diese `change.log`-Datei wurde erstellt, um die jüngsten Entwicklungen zu dokumentieren.
-
-  2025-10-10
-- Enhanced `scripts/check_pic_dates.sh` to support video files (`mkv`, `mp4`, etc.).
-- The script now reads creation date metadata from video containers using `exiftool`, in addition to image EXIF data.
-- Refactored `scripts/sync_photos.sh` to support separate storage quotas for photos and videos within a single cache.
-- Introduced a unified cache directory in `scripts/sync_config.yaml` to ensure compatibility with `picframe`.
-- The sync script now calculates storage usage per media type to enforce quotas.
-- Removed all automatic cache cleanup logic from the sync script to allow the cache to be filled continuously.
-
-2025-09-30:
-- Corrected aspect ratio calculation in `viewer_display.py` to prevent horizontal stretching of portrait images.
-- Replaced incorrect aspect ratio logic in `viewer_display.py`.
-
-2025-10-01:
-- Corrected the calculation of start and end points for vertical panning in `viewer_display.py`.
-- Corrected the conversion of pixel offset to shader uniform offset in `viewer_display.py`.
-
-2025-10-02:
-- Refactored `__calculate_kenburns_transform` in `viewer_display.py` to add a slight zoom for portrait images and randomize zoom and pan for landscape images.
-
-2025-10-03:
-- Modified `viewer_display.py` to calculate pan/wobble range based on display dimensions.
-- Corrected the pannable area calculation in `viewer_display.py` to prevent black borders.
-- Split `kenburns_wobble_pct` into `kenburns_landscape_wobble_pct` and `kenburns_portrait_wobble_pct`.
-- Corrected a `SyntaxError` in `viewer_display.py`.
-
-2025-10-04:
-- Corrected `AttributeError` in `viewer_display.py` by initializing and using new wobble parameters.
-- Fixed inconsistent Ken Burns effect for landscape images by enforcing a minimum zoom in `viewer_display.py`.
-- Corrected script path in `install.sh` to reflect new directory structure.
-- Provided guidance on fixing `FileNotFoundError` for config file by updating `watcher.sh`.
-- Provided guidance on fixing shell script errors by converting line endings with `dos2unix`.
-
-2025-10-05:
-- Created a new shell script `check_pic_dates.sh` to check and correct image dates based on directory names and EXIF data.
-- Added `libimage-exiftool-perl` to `install.sh` to provide `exiftool`.
-- Corrected the clock's vertical position calculation in `viewer_display.py`.
-- Fixed a bug in `check_pic_dates.sh` that caused an invalid date format for the `touch` command.
-- Added an 'A' (All) option to `check_pic_dates.sh` to process all directories without further prompts.
-- Fixed a syntax error (`;&&`) in `check_pic_dates.sh`.
-- Fixed a corrupted `while` loop in `check_pic_dates.sh` that caused a syntax error.
-
-2025-10-14
-- Modified `scripts/pir_manager.py` to start `picframe` immediately if motion is detected during the night-off period.
-- This overrides the night schedule for the current cycle, preventing the system from turning off again until the next night.
-- Added a `night_override` flag to manage this state.
-- Fixed a bug where the '~' in `CONFIG_PATH` was not expanded, by using `os.path.expanduser()`.
-
-2025-10-18
-- Added `scripts/create_test_images.sh` to generate test images by converting PNGs to JPGs.
-- The script overlays image metadata (dimensions, color space) onto the image and adds randomized EXIF data.
-- Iteratively debugged the script to handle shell syntax errors and system locale differences for number formatting.
-- Enhanced the script to differentiate between portrait and landscape images, adjusting text size and position accordingly.
-- Modified the text overlay to use a bold font for better readability.
-- Finalized `scripts/create_test_images.sh` by adjusting text position and style for portrait images, including larger text and a refined outline for better visibility.
-
-2025-10-28
-- Modified install.sh to copy 99-fb-blank.rules and reload udev rules.
-- Modified viewer_display.py to handle video playback by restarting the application.
-- Created viewer_process.py to display a single image.
-- Simplified controller.py by moving video logic to viewer_display.py.
-- Refactored video_player.py to use a direct shell command for VLC.
-- Updated video_streamer.py to manage the new video_player.py subprocess.
-- Enhanced test_image_video_player.py to blank the screen during transitions.
-- Created test_show_image.py for the image/video player test.
-- Updated test_video_player.py to align with the latest video playback mechanism.
-
-## 2025-10-31
-
-- **test/test_integrated_video.py**:
-  - Modified `pi3d.Texture` creation to use 3D numpy arrays instead of 2D to match the expected shape.
-  - Reshaped Y, U, and V planes to be 3D arrays before assigning them to the textures.
-  - (Reverted) Removed `i_format` argument from `pi3d.Texture` calls to let `pi3d` infer the format.
-  - (Reverted) Removed the unused import for `pi3d.constants`.
-  - (Reverted) Added import for `pi3d.constants` and changed `pi3d.GL_RED` to `constants.GL_RED`.
-  - (Reverted) Changed `pi3d.Texture` calls to use `i_format=pi3d.GL_RED`.
-- **README.md**:
-  - Added "Video Support Development Status" section with a table summarizing the attempts to implement video playback.
-
-## 2025-10-30
-
-- **src/picframe/video_streamer.py**:
-  - Experimented with different `ffmpeg` command line options for video decoding.
-  - (Reverted) Added `-c:v h264_v4l2m2m` for hardware decoding.
-  - (Reverted) Changed pixel format to `rgb24`.
-  - Set pixel format to `yuv420p` to match the video's native format.
-
-2025-10-31:
-- Continued ffmpeg integration for video playback.
-- Modified test_integrated_video.py to fix numpy array shape mismatch for pi3d textures (from 2D to 3D).
-- Investigated and documented different approaches for video support in README.md.
-
-2025-10-30:
-- Continued with ffmpeg integration for video playback.
-- In test_integrated_video.py, tried using pi3d.constants.GL_RED for single channel textures.
-
-2025-10-29:
-- Started implementation of video playback via ffmpeg frame streaming.
-- Created test_integrated_video.py to test the integration.
-- In test_integrated_video.py, tried using i_format=pi3d.GL_LUMINANCE for textures.
-
-Date: 2025-11-09
-
-- A recurring bug occurs during the alternating playback of videos and images on the target system (Pi Zero 2W).
-- A crash with the error message: AssertionError: There was an empty texture in your Buffer.
-- After a code modification to address the crash, a white screen is displayed instead of the next image after a video finishes.
-- The core problem lies in the transition from video playback back to pi3d-based image display.
-- Video playback appears to interfere with the graphics context (OpenGL), causing the texture for the subsequent image to be loaded incorrectly or deemed invalid.
-- Previous fix attempts to repair the texture loading/assignment logic in viewer_display.py only cycled between the two error states.
-- Proposed Solution: Decouple video playback completely from the pi3d loop.
-- The approach is modeled after the stable test script test/test_image_video_player.py:
-- The pi3d display is cleanly shut down before the video.
-- The video is played using an external, blocking player (cvlc).
-- After the video ends, pi3d is completely re-initialized for the next image display.
-- This method avoids conflicts with the graphics context and ensures the image display starts in a clean state after a video.
-- Added a summary table to TASKS.md to track different approaches for video playback.
-- Investigated the circular error of 'empty texture' and 'white screen' after video playback.
-- The current plan is to re-implement video playback by stopping pi3d, playing the video with an external player, and then re-initializing pi3d, similar to `test/test_image_video_player.py`. This is to avoid a full service restart.
-
-2025-11-12
-- src/picframe/controller.py - Refactored `loop()` to ensure `self.__viewer.slideshow_is_running()` is called only once per iteration.
-- Effect: Addressed potential race condition causing `AssertionError` or white screen after video playback by preventing redundant calls to `slideshow_is_running` within a single loop cycle.
-- src/picframe/viewer_display.py - Moved `self.__slide.set_textures()` call to immediately follow the assignment of `self.__sfg` and `self.__sbg` within `slideshow_is_running()`.
-- Effect: Ensured that the `pi3d.Sprite` object (`self.__slide`) receives the new texture data as soon as it's loaded, preventing `AssertionError` due to drawing with an empty texture.
-- src/picframe/viewer_display.py - Modified `slideshow_is_running()` to set `self.__alpha = 1.0` when `self.__sfg` is `None` (i.e., after video playback).
-- Effect: Addressed white screen issue by forcing the display of the foreground texture in the first frame after `pi3d` re-initialization, bypassing potential issues with background texture activation.
-- src/picframe/controller.py - Simplified `loop()` logic by removing the `if/else` block around the `slideshow_is_running` call.
-- Effect: Streamlined the controller's interaction with the viewer, aiming to prevent race conditions and `AssertionError` by ensuring a consistent single call to the display update method.
-
-2025-11-13
-  - src/picframe/controller.py - Corrected indentation of the `else` block in `loop()` and repositioned `self.__force_navigate = False`.
-  - Effect: Fixed `IndentationError` preventing the program from starting.
-  - src/picframe/controller.py - Removed redundant `self.__force_navigate = False` assignment within the `if is_video:` block.
-  - Effect: Cleaned up redundant code, improving clarity and reducing potential for subtle logic errors.
-  - src/picframe/viewer_display.py - Modified `slideshow_is_running()` to include a `new_image_loaded` flag and extended the safeguard condition to `if self.__sfg is None or new_image_loaded:`.
-  - Effect: Introduced a robust safeguard to explicitly skip the `draw()` call for one frame immediately after a new image is loaded or `pi3d` is re-initialized, giving the graphics engine time to prepare textures and preventing `AssertionError` or white screen.
+2025-11-15
+- Finalized robust video playback and album resume logic.
+- Implemented stable restart-after-video mechanism using `watcher.sh`.
+- Overhauled album and file selection logic in `model.py` for seamless resuming.
+- Improved `image_cache.py` stability.
 
 2025-11-14
-  - src/picframe/viewer_display.py - Refined the safeguard logic in `slideshow_is_running()` by introducing `self.__first_draw_after_init` flag.
-  - Effect: Ensures that `pi3d` has at least one full frame to process texture assignments after re-initialization, preventing `AssertionError` by avoiding `draw()` calls on unready textures.
-  - Refactored video playback logic for improved stability and architectural clarity.
-  - `controller.py`: Simplified the main loop's video handling. After `play_video_blocking` returns, the controller no longer forces a loop restart (`continue`). Instead, it sets the current picture to `None` and lets the loop proceed, delegating state management entirely to the viewer.
-  - `viewer_display.py`: Implemented a "self-healing" mechanism within `play_video_blocking`. This method now encapsulates the entire video playback cycle: cleanly stopping `pi3d` (`slideshow_stop`), playing the video via an external process, and then fully re-initializing the `pi3d` display (`slideshow_start`).
-  - `viewer_display.py`: Added an explicit screen clear (`self.__display.clear()` and `self.__display.swap_buffers()`) after `pi3d` re-initialization to ensure a clean black screen transition and prevent visual artifacts from the previous graphics context.
-  - `viewer_display.py`: Simplified the safeguard in `slideshow_is_running` to `if self.__sfg is None:`. This robustly prevents drawing operations when no texture is ready (i.e., in the first frame after a video), thus avoiding `AssertionError` and white screens.
-  - Reverted video playback mechanism.
-  - Abandoned in-process pi3d re-initialization after numerous attempts resulted in `AssertionError` or a white screen. This indicates a fundamental synchronization issue between texture loading and drawing after the graphics context is destroyed and recreated.
-  - Reverted to the stable method of exiting the picframe application after video playback. The external `watcher.sh` service is now responsible for restarting the application.
-  - `controller.py`: Main loop now breaks after a video is played, triggering a clean shutdown.
-  - `viewer_display.py`: `play_video_blocking` method was simplified to `play_video`, which now only stops pi3d and plays the video, without attempting to re-initialize the display.
+- Refined safeguard logic in `viewer_display.py`.
+- Refactored video playback logic.
+- Reverted video playback mechanism to application restart method.
 
-2025-11-15 - Finalized robust video playback and album resume logic.
-  - Implemented a stable restart-after-video mechanism using a watcher script.
-  - `controller.py`: Now exits with a special code (10) after video playback, signaling the watcher to restart.
-  - `watcher.sh`: A new wrapper script that runs `picframe` in a loop, restarting it only when it exits with code 10.
-  - `start.py`: Now handles the exit code returned from the controller.
-  - `model.py`:
-      - Completely overhauled the album and file selection logic to support seamless resuming.
-      - Uses `~/picframe/shown_albums.log` to track both completed albums and the next file to be played.
-      - On startup, it now correctly reads the resume-file from the log and sets the internal file index to continue playback at the exact right spot.
-      - Fixed a critical bug where `__file_index` was always reset to 0, which caused the endless loop.
-      - The logic to save the resume state now correctly identifies the file *after* the current one.
-  - `image_cache.py`:
-      - Added robust error handling to prevent crashes when `ffprobe` fails or returns empty metadata for a video.
-      - Fixed a `NameError` by correctly importing `get_video_info`.
-      - Fixed an `AttributeError` by correctly parsing the dictionary returned from `get_video_info`.
-  - `get_image_meta.py`:
-      - Re-introduced the `get_video_info` function to extract metadata from videos using `ffprobe`.
-  - `requirements.txt` & `install.sh`:
-      - Added `exifread` as a dependency to fix a `ModuleNotFoundError`.
-      - Consolidated installation logic into `install.sh`.
-  - Numerous minor bug fixes related to `AttributeError` and `IndentationError` during the implementation of the resume logic.
+2025-11-13
+- Fixed indentation error in `controller.py`.
+- Added `new_image_loaded` flag to `viewer_display.py` safeguard.
 
-## 2025-11-18
+2025-11-12
+- Refactored `controller.py` loop logic.
+- Modified `viewer_display.py` texture setting and alpha handling.
 
-### feat: Robuste Video-Übergänge und komplettes Installations-Skript
+2025-11-09
+- Investigated video playback bugs (AssertionError, white screen).
+- Proposed solution: Decouple video playback from pi3d loop.
 
-- **feat(viewer_display):** Implementierung einer robusten Methode zum Schwärzen des Bildschirms während Video-Übergängen.
-  - Verwendet `dd if=/dev/zero of=/dev/fb0`, um die Konsole vor und nach der Videowiedergabe zuverlässig auszublenden.
-  - Eine `WARNING` im Log (`dd ... returned non-zero exit status 1`) wird als "Feature" akzeptiert, da der gewünschte visuelle Effekt (schwarzer Bildschirm) erzielt wird.
+2025-10-31
+- Modified `test/test_integrated_video.py` for texture handling.
+- Updated README with video support status.
 
-- **feat(install):** Erstellung eines umfassenden `install.sh`-Skripts zur Automatisierung der gesamten Systemeinrichtung.
-  - Installiert alle Systemabhängigkeiten (python, mpv, cec-utils, etc.).
-  - Fügt den Benutzer zur `video`-Gruppe hinzu, um den Zugriff auf Framebuffer und CEC zu gewährleisten.
-  - Deaktiviert den blinkenden Konsolen-Cursor über die Kernel-Kommandozeile (`/boot/firmware/cmdline.txt`) für saubere Übergänge.
-  - Richtet den `picframe.service` für `systemd` ein.
-  - Konfiguriert die `cron`-Jobs für `sync_photos.sh` und `pir_manager.py`.
+2025-10-30
+- Experimented with `ffmpeg` options in `video_streamer.py`.
 
-- **refactor(interface_peripherals):** Der Mauszeiger wird nun direkt in `pi3d` deaktiviert (`show_pointer=False`), was zuverlässiger ist als externe Skripte.
+2025-10-29
+- Started implementation of video playback via ffmpeg frame streaming.
 
+2025-10-28
+- Modified `install.sh`, `viewer_display.py`, `controller.py` for video handling.
+- Refactored `video_player.py`.
 
-## 2025-11-17
+2025-10-18
+- Added `scripts/create_test_images.sh`.
 
-### fix: Stabilität der Videowiedergabe und Fehlerbehebung
+2025-10-14
+- Modified `scripts/pir_manager.py`.
 
-- **fix(watcher):** Das Neustart-Signal für Videos wird nun über eine Umgebungsvariable (`PICFRAME_RESTART_CODE`) anstatt eines Kommandozeilen-Arguments übergeben.
-  - Behebt den Fehler `picframe: error: unrecognized arguments: 10`.
-  - Vereinfacht das `watcher.sh`-Skript erheblich.
+2025-10-10
+- Enhanced `scripts/check_pic_dates.sh`.
+- Refactored `scripts/sync_photos.sh`.
 
-- **refactor(viewer_display):** Radikale Vereinfachung der `play_video`-Methode.
-  - Alle instabilen Versuche, den Bildschirm manuell zu färben (z.B. mit `dd` und temporären Dateien oder direktem Schreiben in den Framebuffer), wurden entfernt.
-  - Dies behebt diverse Fehler wie `[Errno 28] No space left on device` und `BrokenPipeError`.
+2025-10-05
+- Created `scripts/check_pic_dates.sh`.
+- Added `libimage-exiftool-perl` to `install.sh`.
 
-- **chore(troubleshooting):** Systematische Untersuchung und Dokumentation verschiedener Methoden zur Bildschirmsteuerung.
-  - **Versuch 1-7 (Fehlgeschlagen):** Diverse `dd`- und Python-basierte Ansätze zum Färben des Framebuffers führten zu Fehlern (`BrokenPipe`, `No space left on device`, `KeyError`).
-  - **Versuch 8 (Stabil):** Entfernung aller manuellen Bildschirmsteuerungen. Ergebnis: Stabile Funktion, aber sichtbare Konsole beim Übergang.
-  - **Versuch 9 (Fehlgeschlagen):** Einsatz von `setterm` zur Färbung der Konsole. Funktionierte zunächst, war aber nach einem System-Neustart instabil.
-  - **Versuch 11 (Erfolgreich):** Gezielter Einsatz von `dd if=/dev/zero` als finale Lösung (siehe 2025-11-18).
+2025-10-04
+- Corrected `AttributeError` in `viewer_display.py`.
+- Fixed inconsistent Ken Burns effect.
 
-  ### 30. November 2025
+2025-10-03
+- Modified `viewer_display.py` pan/wobble calculation.
 
-**Ziel: Stabile Video-Integration als Frame-Sequenz (Alternative zu mpv)**
+2025-10-02
+- Refactored `__calculate_kenburns_transform`.
 
-*   **Versuch 1: Direkte Integration in `ImageCache`**
-    *   **Änderung:** `image_cache.py` wurde angepasst, um Videos zu erkennen und Metadaten mit `ffprobe` zu extrahieren.
-    *   **Ergebnis:** Fehlgeschlagen. `picframe` stürzte beim Start mit `CRITICAL: Failed to create pi3d display` ab.
-    *   **Grund:** Der `subprocess`-Aufruf von `ffprobe` im `ImageCache`-Thread verursachte eine Race Condition mit der `pi3d`-Initialisierung.
+2025-10-01
+- Corrected vertical panning calculation.
 
-*   **Versuch 2: "Just-in-Time" Frame-Extraktion**
-    *   **Änderung:** Die Video-Logik wurde von `image_cache.py` in `viewer_display.py` verschoben, um Frames erst bei Bedarf zu extrahieren.
-    *   **Ergebnis:** Fehlgeschlagen. Der `pi3d`-Startkonflikt blieb bestehen.
-    *   **Grund:** Allein der `import subprocess` zur Ladezeit in `viewer_display.py` reichte aus, um die `pi3d`-Initialisierung zu stören.
+2025-09-30
+- Corrected aspect ratio calculation.
 
-*   **Versuch 3: Vollständige Bereinigung und Neustrukturierung**
-    *   **Änderung:** Mehrere Versuche, alle Video-bezogenen Änderungen aus `image_cache.py`, `controller.py`, `viewer_display.py`, `get_image_meta.py` und `start.py` zu entfernen, um einen stabilen Zustand wiederherzustellen.
-    *   **Ergebnis:** Fehlgeschlagen. Es traten weiterhin verschiedene `AttributeError` beim `pi3d`-Start auf (`... has no attribute 'context'` oder `... has no attribute 'display'`).
-    *   **Grund:** Eine Kaskade von subtilen Problemen:
-        1.  Übersehene Code-Reste (z.B. ein hartcodiertes `use_sdl2 = False`).
-        2.  Falsche Startreihenfolge in `start.py`, bei der das `Model` vor dem `Viewer` initialisiert wurde.
-        3.  Import-Zeit-Konflikte, bei denen das Laden von Modulen wie `model` oder `viewer_display` (die wiederum `subprocess` oder `threading` importierten) den `pi3d`-Start störte.
+2025-05-24
+- Creation of `test/test_bulk_video_player.py`.
+- Bug fixing and refinement of `test_bulk_video_player.py`.
+- Documentation updates.
 
-*   **Strategiewechsel: Externer Vorverarbeitungsprozess**
-    *   **Änderung:** Die Erkenntnis, dass jede Form von `subprocess`-Aufruf innerhalb des `picframe`-Prozesses instabil ist, führte zu einem neuen Plan.
-    *   **Dokumentation:** Die neue Strategie (externes Skript `video_preprocessor.py`) und die Chronik der Fehlversuche wurden in `README.md` dokumentiert.
-    *   **Ergebnis:** Dies ist der aktuelle, vielversprechende Plan für die weitere Entwicklung.
+2025-05-21
+- `src/picframe/viewer_display.py`: Ken Burns Optimization (Tiling fix, Offset correction, Aspect Fill).
+- `src/picframe/viewer_display.py`: Video Slideshow Integration (`play_video_slideshow`).
+- `configuration.yaml`: New parameters for video slideshow.
+- `scripts/`: New `set_tty_color.sh`.
+- `test/`: New `test_bulk_video_player.py` and `test_video_slide_show.py`.
 
-*   **Versuch 5: Radikale Bereinigung und Isolation**
-    *   **Änderung:** Um Import-Konflikte zu lösen, wurde die `DEFAULT_CONFIG` in eine eigene, "saubere" Datei `default_config.py` ausgelagert. `start.py` wurde angepasst, um nur noch diese Datei und `viewer_display.py` zu importieren, bevor das Display erstellt wird. Der Import des `model`-Moduls wurde so weit wie möglich nach hinten verschoben.
-    *   **Ergebnis:** Fehlgeschlagen. Der Fehler `CRITICAL: Failed to create pi3d display: 'DisplayOpenGL' object has no attribute 'display'` blieb bestehen.
-    *   **Grund:** Die letzte verbleibende Ursache wurde identifiziert: Der `import subprocess` an der Spitze von `viewer_display.py` "vergiftete" die Umgebung für `pi3d` bereits beim Laden des Moduls.
-
-*   **Versuch 6: Später Import von `subprocess`**
-    *   **Änderung:** Der `import subprocess` wurde aus dem globalen Scope von `viewer_display.py` entfernt und stattdessen direkt in die Methoden verschoben, die ihn benötigen.
-    *   **Ergebnis:** Fehlgeschlagen. Keine Änderung am Fehlerbild.
-    *   **Grund:** An diesem Punkt wurde klar, dass die Kette von Abhängigkeiten und Seiteneffekten bei der Initialisierung zu komplex und fragil ist, um sie innerhalb des `picframe`-Prozesses zuverlässig zu lösen.
-
-*   **Strategiewechsel: Externer Vorverarbeitungsprozess**
-    *   **Änderung:** Die Erkenntnis, dass jede Form von `subprocess`-Aufruf innerhalb des `picframe`-Prozesses instabil ist, führte zu einem neuen Plan.
-    *   **Dokumentation:** Die neue Strategie (externes Skript `video_preprocessor.py`) und die Chronik der Fehlversuche wurden in `README.md` dokumentiert.
-    *   **Ergebnis:** Dies ist der aktuelle, vielversprechende Plan für die weitere Entwicklung.
-
-### 29. November 2025
-
-**Ziel: Den `pi3d`-Startkonflikt umgehen**
-
-*   **Versuch 3: "Just-in-Time" Frame-Extraktion**
-    *   **Änderung:** Die Video-Logik wurde von `image_cache.py` in `viewer_display.py` verschoben. Die Idee war, Frames erst bei Bedarf zu extrahieren, lange nachdem `pi3d` initialisiert wurde.
-    *   **Ergebnis:** Fehlgeschlagen. Der `pi3d`-Startkonflikt blieb bestehen.
-    *   **Grund:** Es wurde erkannt, dass nicht nur der Aufruf von `subprocess`, sondern bereits der `import` des Moduls zur Ladezeit des Programms den Konflikt auslöst.
-
-*   **Versuch 4: Optimierung der Startreihenfolge**
-    *   **Änderung:** `start.py` wurde grundlegend umgebaut, um `pi3d.Display.create()` als allerersten Schritt auszuführen, noch vor dem Logging und der Erstellung des `Model`-Objekts.
-    *   **Ergebnis:** Fehlgeschlagen. Es traten weiterhin verschiedene `AttributeError` beim `pi3d`-Start auf (`... has no attribute 'context'` oder `... has no attribute 'display'`).
-    *   **Grund:** Eine Kaskade von subtilen Problemen wurde aufgedeckt:
-        1.  Übersehene Code-Reste (z.B. ein hartcodiertes `use_sdl2 = False`).
-        2.  Import-Zeit-Konflikte, bei denen das Laden von Modulen wie `model` oder `viewer_display` (die wiederum `subprocess` oder `threading` importierten) den `pi3d`-Start störte.
-
-### 28. November 2025 (und früher)
-
-**Ziel: Stabile Video-Integration als Frame-Sequenz (Alternative zu mpv)**
-
-*   **Versuch 1: Direkte Integration in `ImageCache`**
-    *   **Änderung:** `image_cache.py` wurde angepasst, um Videos zu erkennen und Metadaten (Dauer, Auflösung) mit `ffprobe` zu extrahieren.
-    *   **Ergebnis:** Fehlgeschlagen. `picframe` stürzte beim Start mit `CRITICAL: Failed to create pi3d display` ab.
-    *   **Grund:** Der `subprocess`-Aufruf von `ffprobe` im `ImageCache`-Thread verursachte eine Race Condition mit der `pi3d`-Initialisierung.
-
-*   **Versuch 2: Manuelle Konfigurationsanpassungen**
-    *   **Änderung:** Diverse Anpassungen in der `configuration.yaml`, um `use_sdl2` und andere Grafik-Parameter zu testen.
-    *   **Ergebnis:** Fehlgeschlagen. Keine dieser Änderungen konnte den fundamentalen Konflikt zwischen `subprocess` und `pi3d` beim Start beheben.
+2025-01-05
+- Feature: Added `video_slideshow_quality`.
+- Improvement: Enabled hardware acceleration.
+- Improvement: Correct handling of anamorphic videos.
+- Improvement: Implemented smart process throttling.
+- Fix: Resolved `XDG_RUNTIME_DIR` issues.
+- Fix: Fixed black screen freezes.
+- Fix: Ensured `ffmpeg` process pause/resume.
