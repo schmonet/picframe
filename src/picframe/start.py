@@ -38,6 +38,9 @@ def setup_logger(log_level, log_file, log_to_console):
     """
     # Get the root logger
     logger = logging.getLogger()
+    if logger.hasHandlers():
+        logger.handlers.clear()
+        
     logger.setLevel(log_level)
 
     # Create a formatter

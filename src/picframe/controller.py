@@ -8,7 +8,7 @@ import ssl
 import os
 import subprocess
 from picframe.video_extractor import VideoExtractor
-VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v')
+VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm', '.mpg', '.mpeg', '.m4v', '.ts', '.m2ts')
 
 
 def make_date(txt):
@@ -32,6 +32,7 @@ class Controller:
         self.__http_config = self.__model.get_http_config()
         self.__mqtt_config = self.__model.get_mqtt_config()
         self.__paused = False
+        self.__paused_changed = False
         self.__force_navigate = False
         self.__next_tm = 0
         self.keep_looping = True
@@ -48,9 +49,7 @@ class Controller:
     @paused.setter
     def paused(self, val: bool):
         self.__paused = val
-        pic = self.__model.get_current_pics()[0]
-        if pic:
-            self.__viewer.reset_name_tm(pic, val, side=0, pair=self.__model.get_current_pics()[1] is not None)
+        self.__paused_changed = True
         if self.__mqtt_config['use_mqtt']:
             self.publish_state()
 
@@ -70,11 +69,23 @@ class Controller:
         self.__model.delete_file()
         self.next()
 
+    def get_current_path(self):
+        pics = self.__model.get_current_pics()
+        if pics and pics[0]:
+            return pics[0].fname
+        return ""
+
     # ... (most property setters remain the same, just removing video specific logic)
 
     def loop(self):
         exit_code = 0 # Default exit code for clean shutdown
         while self.keep_looping:
+            if self.__paused_changed:
+                pic = self.__model.get_current_pics()[0]
+                if pic:
+                    self.__viewer.reset_name_tm(pic, self.__paused, side=0, pair=self.__model.get_current_pics()[1] is not None)
+                self.__paused_changed = False
+
             time_delay = self.__model.time_delay
             fade_time = self.__model.fade_time
             tm = time.time()
@@ -100,6 +111,7 @@ class Controller:
                                                                conf['video_slideshow_time_delay'])
                             self.__model.save_current_file_state(pics[0].fname)
                             self.__next_tm = tm # Reset timer to continue immediately
+                            pics = None # Prevent slideshow_is_running from trying to load the video as an image
                         else:
                             self.__logger.info("Next item is a video. Handing off to video player.")
                             self.__logger.info(f"Playing video: {pics[0].fname}")
@@ -115,7 +127,7 @@ class Controller:
                         self.__model.save_current_file_state(pics[0].fname) # Always save current image state
                         # It's an image, set the timer for the next change
                         orientation = "portrait" if pics[0].is_portrait else "landscape"
-                        fname = os.path.basename(pics[0].fname)
+                        fname = os.path.join(os.path.basename(os.path.dirname(pics[0].fname)), os.path.basename(pics[0].fname))
                         if self.__model.get_viewer_config()['kenburns']:
                             self.__logger.info(f"Next item is a {orientation} image {fname}. Displaying. Using Ken Burns for {self.__model.time_delay} sec.")
                         else:
@@ -154,6 +166,8 @@ class Controller:
                 print("DEBUG: Slideshow loop stopped because viewer.slideshow_is_running returned False.")
                 break
             if skip_image:
+                self.__logger.warning("Skipping and purging unreadable image to prevent loop.")
+                self.__model.purge_bad_file()
                 self.__next_tm = 0
             
             self.__interface_peripherals.check_input()
@@ -186,7 +200,22 @@ class Controller:
 
         self.__interface_peripherals = InterfacePeripherals(self.__model, self.__viewer, self)
 
-        # ... (start mqtt and http server as before)
+        if self.__mqtt_config['use_mqtt']:
+            from picframe.interface_mqtt import InterfaceMQTT
+            self.__interface_mqtt = InterfaceMQTT(self, self.__mqtt_config)
+
+        if self.__http_config['use_http']:
+            from picframe.interface_http import InterfaceHttp
+            self.__interface_http = InterfaceHttp(
+                self,
+                self.__http_config['path'],
+                self.__model.get_model_config()['pic_dir'],
+                self.__model.get_model_config()['no_files_img'],
+                self.__http_config['port'],
+                self.__http_config.get('auth', False),
+                self.__http_config.get('username'),
+                self.__http_config.get('password')
+            )
 
     def stop(self):
         self.keep_looping = False

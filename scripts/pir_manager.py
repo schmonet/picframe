@@ -44,8 +44,8 @@ except Exception as e:
 PIR_PIN = 4  # GPIO pin of the PIR sensor
 HOLDSCRREN_TIMEOUT_S = 3600   # 30 min of inactivity to pause the slideshow
 BLACKSCREEN_TIMEOUT_S = 7200  # 1 hour of inactivity for a black screen
-NIGHT_START_HOUR = 0  # 00:00
-NIGHT_END_HOUR = 7    # 07:00
+NIGHT_START_HOUR = 23 # 23:00
+NIGHT_END_HOUR = 6    # 06:00
 LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "~/picframe/configuration.yaml"
@@ -142,6 +142,8 @@ def main():
     was_night = False      # To detect transition from night to day
     
     print("---PIR Manager Started---")
+    run_command("sudo rfkill unblock wifi")
+    run_command("rm -f /dev/shm/picframe_nowlan.flag")
     set_display_power(True) # Ensure display is on at start
     set_service(True)
     set_pause_with_retry(False, http_port) # Ensure slideshow is not paused
@@ -171,6 +173,7 @@ def main():
                             print("Motion detected during night. Overriding night mode.")
                             night_override = True
                         run_command("sudo rfkill unblock wifi")
+                        run_command("rm -f /dev/shm/picframe_nowlan.flag")
                         set_display_power(True)
                         set_service(True)
                         set_pause_with_retry(False, http_port)
@@ -186,6 +189,7 @@ def main():
                 if current_state == STATE_OFF and not is_night:
                     print("Day time. Resuming normal operation.")
                     run_command("sudo rfkill unblock wifi")
+                    run_command("rm -f /dev/shm/picframe_nowlan.flag")
                     set_display_power(True)
                     set_service(True)
                     set_pause_with_retry(False, http_port)
@@ -194,6 +198,8 @@ def main():
                 elif is_night and not night_override:
                     if current_state != STATE_OFF:
                         print("Night time. Entering OFF mode.")
+                        run_command("sudo rfkill block wifi")
+                        run_command("touch /dev/shm/picframe_nowlan.flag")
                         set_service(False)
                         set_display_power(False)
                         current_state = STATE_OFF

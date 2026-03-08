@@ -3,14 +3,16 @@ __pycache__/
 *.pyc
 
 # Logs und Status-Dateien
-*.log
 shown_albums.log
+picframe.log
 
 # Lokaler Bild-Cache (sollte nicht ins Repo)
 cache/
+picframe_cache/
 
 # Temporäre Video-Frames (falls ffmpeg extraction genutzt wird)
 *_frames/
+ffmpeg/
 
 # Virtuelle Umgebungen
 venv/
@@ -21,6 +23,13 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
-
-# private videos
-test/clips/full
+ 
+# Test media files that should not be in the repository
+test/clips/
+test/fullmix/
+test/kamera/
+test/landscape/
+test/long/
+test/mixed/
+test/portrait/
+test/videos/

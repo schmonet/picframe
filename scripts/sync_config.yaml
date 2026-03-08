@@ -31,7 +31,7 @@ video_sync:
   filter_root_folders: "/[0-9][0-9][0-9][0-9]/"
   # Pipe-separated list of video file extensions to sync
   # file_extensions: "mp4|mov|avi|mkv"
-  file_extensions: "mp4"
+  file_extensions: "mp4|mkv|m2ts|mov|avi"
 
 # ----------------------------------------
 # COMMON SETTINGS (for both photo and video sync)
