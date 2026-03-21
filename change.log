@@ -1,3 +1,7 @@
+2026-03-08
+- Bugfixes:
+  - **Status Icon**: The "Server Unreachable" icon (`offline.png`) now correctly disappears after a failed sync attempt. The cleanup function in `sync_photos.sh` was updated to remove the status flag regardless of the sync outcome, ensuring the UI returns to its normal state.
+
 2026-03-07
 - Features:
   - **Status Icons**: Implemented visual feedback system in `viewer_display.py`. Icons are now displayed for states: Play, Pause, Sync, Download, Offline, No-WiFi, Video-Playback, and Empty Cache.
