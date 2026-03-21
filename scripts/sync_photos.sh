@@ -68,6 +68,7 @@ get_media_size_gb() {
 
 cleanup() {
     rm -f /dev/shm/picframe_download.flag
+    rm -f /dev/shm/picframe_offline.flag
     local mount_point=$(get_config "common" "mount_point")
     if [ -n "$mount_point" ] && mountpoint -q "$mount_point"; then
         sudo umount -l "$mount_point" >/dev/null 2>&1
