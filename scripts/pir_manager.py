@@ -32,16 +32,18 @@ except Exception as e:
     class MockGPIO:
         BCM = 0
         IN = 0
+        OUT = 1
         HIGH = 1
         LOW = 0
         def setmode(self, m): pass
         def setup(self, p, m): pass
         def input(self, p): return 0
+        def output(self, p, v): pass
         def cleanup(self): pass
     GPIO = MockGPIO()
 
 # --- Configuration ---
-PIR_PIN = 4  # GPIO pin of the PIR sensor
+PIR_PIN = 18  # GPIO pin of the PIR sensor (BCM numbering, physical pin 12)
 HOLDSCRREN_TIMEOUT_S = 3600   # 30 min of inactivity to pause the slideshow
 BLACKSCREEN_TIMEOUT_S = 7200  # 1 hour of inactivity for a black screen
 NIGHT_START_HOUR = 23 # 23:00
@@ -49,6 +51,15 @@ NIGHT_END_HOUR = 6    # 06:00
 LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "~/picframe/configuration.yaml"
+
+# --- Display Power Control ---
+# "cec"  : send HDMI-CEC standby/on commands via cec-client (works with CEC-compliant TVs, e.g. Sony).
+# "gpio" : hard-switch the display's 5V supply via a MOSFET module (e.g. XY-MOS), needed for
+#          displays that don't fully turn off their backlight on CEC standby (e.g. Verbatim #49593).
+DISPLAY_POWER_METHOD = "gpio"
+DISPLAY_POWER_PIN = 17  # BCM17 / physical pin 11 (generic GPIO, no special/hybrid function)
+# True: GPIO HIGH switches the MOSFET/display ON, LOW = OFF. Flip to False if your module inverts.
+DISPLAY_POWER_ACTIVE_HIGH = True
 
 # --- States ---
 STATE_ON = "ON"
@@ -70,8 +81,12 @@ def set_service(is_active):
     run_command(f"sudo systemctl {action} {PICFRAME_SERVICE}")
 
 def set_display_power(is_on):
-    """Turns the display on or off using cec-client."""
-    if is_on:
+    """Turns the display on or off, either via HDMI-CEC or a hard GPIO power switch."""
+    if DISPLAY_POWER_METHOD == "gpio":
+        level = GPIO.HIGH if (is_on == DISPLAY_POWER_ACTIVE_HIGH) else GPIO.LOW
+        print(f"Turning display {'on' if is_on else 'off'} via GPIO{DISPLAY_POWER_PIN} (5V switch)...")
+        GPIO.output(DISPLAY_POWER_PIN, level)
+    elif is_on:
         print("Turning display on with cec-client...")
         run_command("echo 'on 0' | cec-client -s -d 1")
     else: # is_on is False
@@ -134,7 +149,9 @@ def main():
     # --- GPIO Setup ---
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(PIR_PIN, GPIO.IN)
-    
+    if DISPLAY_POWER_METHOD == "gpio":
+        GPIO.setup(DISPLAY_POWER_PIN, GPIO.OUT)
+
     last_motion_time = time.monotonic()
     current_state = STATE_ON
     last_motion_state = False

@@ -75,6 +75,52 @@ The goal was to prevent wasting picture area by ensuring that scaling for the Ke
 | **33 | **Pre-emptive GC**<br>Force `gc.collect()` before transition starts. | Move inevitable memory cleanup freezes to the invisible loading phase. | **Fluid Animation**<br>Eliminates stuttering during the visible fade effect. | Python's GC would otherwise run randomly during the animation. |
 | **34** | **Panorama Mode**<br>Added dedicated logic for ultra-wide images (`AR > Screen AR`). | Enable horizontal scrolling for panoramas instead of just zooming. | **New Feature**<br>Panoramas scroll left/right; standard landscapes zoom in/out. | - |
 
+## Display Power Control: CEC vs. GPIO Hard-Switch
+
+**Problem:** The initial test setup used a Sony TV, which correctly turns off its backlight on
+HDMI-CEC standby (`echo 'standby 0' | cec-client -s -d 1`). After switching to the final hardware
+— a Verbatim portable FHD display (#49593) — CEC standby over HDMI no longer turns off the
+backlight; the display stays lit.
+
+**Solution:** Hard-switch the display's 5V power supply using a MOSFET module (XY-MOS) driven by
+a Raspberry Pi Zero 2 WH GPIO pin.
+
+**Pitfall — pin numbering scheme mismatch:** The wiring was originally planned on a compact 2x5
+(10-pin) header breakout, using BCM4 (physical pin 7) for the PIR sensor and BCM8 (physical pin
+24, SPI0 CE0) for the MOSFET trigger. During wiring, a pi4j reference table using **WiringPi
+numbering** (not BCM) was mistakenly consulted for the MOSFET pin: WiringPi pin 7 happens to equal
+physical pin 7 (= BCM4, correct by coincidence of numbers), but **WiringPi pin 8 equals physical
+pin 3**, not physical pin 24. Physical pin 3 is BCM2 (I2C1 SDA), a special-function pin with a
+permanent hardware pull-up to 3.3V — unsuitable as a generic switched output, and a status LED
+observed lit on the module while wired there was not reliable evidence of trigger polarity, since
+that pin idles HIGH regardless of software due to its fixed I2C pull-up.
+
+**Final pin assignment:** The compact 10-pin header was replaced with a larger header breakout,
+removing the pin-availability constraint. Final wiring (BCM numbering, matching
+`GPIO.setmode(GPIO.BCM)` used throughout the code):
+*   **PIR sensor (RCW-0506):** BCM18 (physical pin 12) — `PIR_PIN` in `pir_manager.py` / `test_pir.py`.
+*   **MOSFET trigger (display 5V switch):** BCM17 (physical pin 11) — `DISPLAY_POWER_PIN`.
+
+Both are plain general-purpose GPIOs with no special/hybrid function (not I2C, SPI, UART, or
+EEPROM-ID pins), so no fixed pull-up or kernel driver conflicts apply.
+
+**Implementation:** `pir_manager.py` and `test_pir.py` support both display power methods via
+constants:
+*   `DISPLAY_POWER_METHOD`: `"cec"` (original, HDMI-CEC via `cec-client`) or `"gpio"` (new, hard
+    5V switch via `DISPLAY_POWER_PIN`). Kept configurable so the CEC path remains available as a
+    fallback (e.g. for testing against a CEC-compliant TV again).
+*   `DISPLAY_POWER_ACTIVE_HIGH`: Trigger polarity of the MOSFET module's control pin. Defaults to
+    `True` (GPIO HIGH = display on); flip to `False` if the module inverts. Must be verified with
+    `test_pir.py` on the actual hardware, since it was not reliably determined during the pin
+    mix-up described above.
+
+**Open items to verify on hardware:**
+*   Confirm the XY-MOS module's actual trigger polarity (active-HIGH vs. active-LOW) and adjust
+    `DISPLAY_POWER_ACTIVE_HIGH` if needed.
+*   `RPi.GPIO`'s `GPIO.cleanup()` (called on script exit) resets `DISPLAY_POWER_PIN` to a floating
+    input, which can leave the MOSFET gate undriven during a crash/restart window. If this causes
+    visible flicker, add a physical pull resistor on the gate matching the desired fail-safe state.
+
 ## TTY Color Change Attempts
 
 *   **Objective:** Permanently change the **background color** of the entire local **Console (TTY1) on Raspberry Pi OS Bookworm Lite** (HDMI display) from **Black to Grey**.

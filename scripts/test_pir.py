@@ -28,9 +28,14 @@ except Exception:
     exit(1)
 
 # --- Configuration ---
-PIR_PIN = 4
+PIR_PIN = 18  # GPIO pin of the PIR sensor (BCM numbering, physical pin 12)
 PICFRAME_SERVICE = "picframe.service"
 CONFIG_PATH = "~/picframe/configuration.yaml"
+
+# --- Display Power Control (mirrors pir_manager.py, keep in sync) ---
+DISPLAY_POWER_METHOD = "gpio"  # "cec" (cec-client) or "gpio" (hard 5V switch via MOSFET module)
+DISPLAY_POWER_PIN = 17  # BCM17 / physical pin 11 (generic GPIO, no special/hybrid function)
+DISPLAY_POWER_ACTIVE_HIGH = True  # True: GPIO HIGH = display ON. Flip to False if your module inverts.
 
 def run_command(cmd):
     """Executes a shell command."""
@@ -39,6 +44,19 @@ def run_command(cmd):
         subprocess.run(cmd, shell=True, check=True)
     except Exception as e:
         print(f"Error running command: {cmd}\n{e}")
+
+def set_display_power(is_on):
+    """Turns the display on or off, either via HDMI-CEC or a hard GPIO power switch."""
+    if DISPLAY_POWER_METHOD == "gpio":
+        level = GPIO.HIGH if (is_on == DISPLAY_POWER_ACTIVE_HIGH) else GPIO.LOW
+        print(f"Turning display {'on' if is_on else 'off'} via GPIO{DISPLAY_POWER_PIN} (5V switch)...")
+        GPIO.output(DISPLAY_POWER_PIN, level)
+    elif is_on:
+        print("Turning display on with cec-client...")
+        run_command("echo 'on 0' | cec-client -s -d 1")
+    else:
+        print("Turning display off with cec-client...")
+        run_command("echo 'standby 0' | cec-client -s -d 1")
 
 def set_pause(pause: bool, port: int):
     """Pauses or unpauses the slideshow via HTTP call."""
@@ -63,12 +81,18 @@ def main():
     except Exception as e:
         print(f"Warning: Could not read config file at {CONFIG_PATH}: {e}. Using default http port {http_port}.")
 
+    # --- GPIO Setup ---
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(PIR_PIN, GPIO.IN)
+    if DISPLAY_POWER_METHOD == "gpio":
+        GPIO.setup(DISPLAY_POWER_PIN, GPIO.OUT)
+
     print("\n--- Starting State Sequence Test ---")
 
     # 1. STATE_ON
     print("\n--- Testing STATE_ON ---")
     print("Turning display ON and starting service.")
-    run_command("echo 'on 0' | cec-client -s -d 1")
+    set_display_power(True)
     run_command(f"sudo systemctl start {PICFRAME_SERVICE}")
     set_pause(False, http_port)
     time.sleep(10)
@@ -88,37 +112,35 @@ def main():
     # 4. STATE_BLACK
     print("\n--- Testing STATE_BLACK ---")
     print("Turning display OFF (service remains running).")
-    run_command("echo 'standby 0' | cec-client -s -d 1")
+    set_display_power(False)
     time.sleep(10)
 
     # 5. Resume from BLACK
     print("\n--- Resuming from STATE_BLACK ---")
     print("Turning display ON.")
-    run_command("echo 'on 0' | cec-client -s -d 1")
+    set_display_power(True)
     time.sleep(10)
 
     # 6. STATE_OFF
     print("\n--- Testing STATE_OFF ---")
     print("Turning display OFF and stopping service.")
-    run_command("echo 'standby 0' | cec-client -s -d 1")
+    set_display_power(False)
     run_command(f"sudo systemctl stop {PICFRAME_SERVICE}")
     time.sleep(10)
 
     # --- Restore to a known good state (ON) ---
     print("\n--- Test sequence finished. Restoring to STATE_ON. ---")
-    run_command("echo 'on 0' | cec-client -s -d 1")
+    set_display_power(True)
     run_command(f"sudo systemctl start {PICFRAME_SERVICE}")
     print("Waiting for picframe service to start...")
     time.sleep(5) # Allow http server to start
     set_pause(False, http_port)
-    
+
     print("\nPausing for 5 seconds before starting PIR reading...")
     time.sleep(5)
 
     # --- Continuous PIR sensor reading ---
     print("\n--- Starting continuous PIR sensor reading ---")
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(PIR_PIN, GPIO.IN)
     last_state = -1
     try:
         while True:
