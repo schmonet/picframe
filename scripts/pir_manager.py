@@ -44,8 +44,8 @@ except Exception as e:
 
 # --- Configuration ---
 PIR_PIN = 18  # GPIO pin of the PIR sensor (BCM numbering, physical pin 12)
-HOLDSCRREN_TIMEOUT_S = 3600   # 30 min of inactivity to pause the slideshow
-BLACKSCREEN_TIMEOUT_S = 7200  # 1 hour of inactivity for a black screen
+HOLDSCRREN_TIMEOUT_S = 3600   # 60 min of inactivity to pause the slideshow
+BLACKSCREEN_TIMEOUT_S = 7200  # 2 hours of inactivity for a black screen
 NIGHT_START_HOUR = 23 # 23:00
 NIGHT_END_HOUR = 6    # 06:00
 LOOP_SLEEP_S = 15.0    # Time between checks (15.0 seconds)
@@ -152,18 +152,34 @@ def main():
     if DISPLAY_POWER_METHOD == "gpio":
         GPIO.setup(DISPLAY_POWER_PIN, GPIO.OUT)
 
-    last_motion_time = time.monotonic()
-    current_state = STATE_ON
-    last_motion_state = False
-    night_override = False # True if night mode was interrupted by motion
-    was_night = False      # To detect transition from night to day
-    
     print("---PIR Manager Started---")
-    run_command("sudo rfkill unblock wifi")
-    run_command("rm -f /dev/shm/picframe_nowlan.flag")
-    set_display_power(True) # Ensure display is on at start
-    set_service(True)
-    set_pause_with_retry(False, http_port) # Ensure slideshow is not paused
+
+    # --- Night-aware startup ---
+    # If the script (re)starts during the night window, go straight to OFF
+    # instead of briefly turning everything on and blocking wifi a moment later.
+    now = datetime.now()
+    if NIGHT_START_HOUR < NIGHT_END_HOUR:
+        is_night = NIGHT_START_HOUR <= now.hour < NIGHT_END_HOUR
+    else:
+        is_night = now.hour >= NIGHT_START_HOUR or now.hour < NIGHT_END_HOUR
+
+    if is_night:
+        print("Starting during night hours. Entering OFF mode immediately.")
+        run_command("sudo rfkill block wifi")
+        run_command("touch /dev/shm/picframe_nowlan.flag")
+        set_display_power(False)
+        set_service(False)
+        current_state = STATE_OFF
+    else:
+        run_command("sudo rfkill unblock wifi")
+        run_command("rm -f /dev/shm/picframe_nowlan.flag")
+        set_display_power(True)
+        set_service(True)
+        set_pause_with_retry(False, http_port)
+        current_state = STATE_ON
+
+    last_motion_time = time.monotonic()
+    last_motion_state = False
 
     try:
         while True:
@@ -173,37 +189,18 @@ def main():
             else:  # For night periods that cross midnight (e.g., 22:00-6:00)
                 is_night = now.hour >= NIGHT_START_HOUR or now.hour < NIGHT_END_HOUR
 
-            # Reset override when day begins
-            if not is_night and was_night:
-                print("Day time begins. Resetting night override.")
-                night_override = False
-
-            motion_detected = GPIO.input(PIR_PIN) == GPIO.HIGH
-            inactivity_time = time.monotonic() - last_motion_time
-
-            if motion_detected:
-                last_motion_time = time.monotonic()
-                if current_state != STATE_ON:
-                    print("Motion detected. Resuming normal operation.")
-                    if current_state == STATE_OFF:
-                        if is_night:
-                            print("Motion detected during night. Overriding night mode.")
-                            night_override = True
-                        run_command("sudo rfkill unblock wifi")
-                        run_command("rm -f /dev/shm/picframe_nowlan.flag")
-                        set_display_power(True)
-                        set_service(True)
-                        set_pause_with_retry(False, http_port)
-                    else:  # Covers STATE_BLACK and STATE_HOLD
-                        if current_state == STATE_BLACK:
-                            set_display_power(True)
-                        set_pause_with_retry(False, http_port) # Always unpause if not OFF
-                    current_state = STATE_ON
-                else: # current_state is STATE_ON
-                    if not last_motion_state: # and last state was no motion
-                        print("Motion detected (normal operation). Resetting inactivity timer.")
-            else:  # No motion
-                if current_state == STATE_OFF and not is_night:
+            if is_night:
+                # Night mode is absolute: no override, no PIR reaction. WiFi and
+                # display stay off no matter what the PIR sensor reports.
+                if current_state != STATE_OFF:
+                    print("Night time. Entering OFF mode.")
+                    run_command("sudo rfkill block wifi")
+                    run_command("touch /dev/shm/picframe_nowlan.flag")
+                    set_service(False)
+                    set_display_power(False)
+                    current_state = STATE_OFF
+            else:
+                if current_state == STATE_OFF:
                     print("Day time. Resuming normal operation.")
                     run_command("sudo rfkill unblock wifi")
                     run_command("rm -f /dev/shm/picframe_nowlan.flag")
@@ -212,27 +209,35 @@ def main():
                     set_pause_with_retry(False, http_port)
                     last_motion_time = time.monotonic()
                     current_state = STATE_ON
-                elif is_night and not night_override:
-                    if current_state != STATE_OFF:
-                        print("Night time. Entering OFF mode.")
-                        run_command("sudo rfkill block wifi")
-                        run_command("touch /dev/shm/picframe_nowlan.flag")
-                        set_service(False)
-                        set_display_power(False)
-                        current_state = STATE_OFF
-                elif inactivity_time > BLACKSCREEN_TIMEOUT_S:
-                    if current_state != STATE_BLACK:
-                        print(f"Inactivity for {int(inactivity_time/60)}min. Entering Blackscreen mode.")
-                        set_display_power(False)
-                        current_state = STATE_BLACK
-                elif inactivity_time > HOLDSCRREN_TIMEOUT_S:
-                    if current_state != STATE_HOLD and current_state != STATE_BLACK:
-                        print(f"Inactivity for {int(inactivity_time/60)}min. Entering Holdscreen mode.")
-                        set_pause_with_retry(True, http_port)
-                        current_state = STATE_HOLD
-            
-            was_night = is_night
-            last_motion_state = motion_detected
+
+                motion_detected = GPIO.input(PIR_PIN) == GPIO.HIGH
+                inactivity_time = time.monotonic() - last_motion_time
+
+                if motion_detected:
+                    last_motion_time = time.monotonic()
+                    if current_state != STATE_ON:
+                        print("Motion detected. Resuming normal operation.")
+                        if current_state == STATE_BLACK:
+                            set_display_power(True)
+                        set_pause_with_retry(False, http_port) # Always unpause if not OFF
+                        current_state = STATE_ON
+                    else: # current_state is STATE_ON
+                        if not last_motion_state: # and last state was no motion
+                            print("Motion detected (normal operation). Resetting inactivity timer.")
+                else:  # No motion
+                    if inactivity_time > BLACKSCREEN_TIMEOUT_S:
+                        if current_state != STATE_BLACK:
+                            print(f"Inactivity for {int(inactivity_time/60)}min. Entering Blackscreen mode.")
+                            set_display_power(False)
+                            current_state = STATE_BLACK
+                    elif inactivity_time > HOLDSCRREN_TIMEOUT_S:
+                        if current_state != STATE_HOLD and current_state != STATE_BLACK:
+                            print(f"Inactivity for {int(inactivity_time/60)}min. Entering Holdscreen mode.")
+                            set_pause_with_retry(True, http_port)
+                            current_state = STATE_HOLD
+
+                last_motion_state = motion_detected
+
             time.sleep(LOOP_SLEEP_S)
 
     except KeyboardInterrupt:

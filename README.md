@@ -105,12 +105,14 @@ This repository is a fork of the original [picframe by helgeerbe](https://github
 
 ## Automatic Slideshow during the day 📅
 
-* Slideshow and display are deactivated at night between **12:00 AM and 6:00 AM**.
-* Detect with **PIR sensor RCW-0506** whether people are nearby.
-* `pir_manager.py` checks PIR sensor for movement every 15 minutes:
+* Slideshow and display are deactivated at night between **11:00 PM and 6:00 AM**. This night
+  window is absolute: WiFi stays blocked and the PIR sensor is ignored the whole time, so nothing
+  short of the clock reaching 6 AM turns things back on (see "Logic of `pir_manager.py`" below).
+* During the day, detect with **PIR sensor RCW-0506** whether people are nearby.
+* `pir_manager.py` polls the PIR sensor every 15 seconds:
     * **HOLD** (1h no movement): the slideshow is **paused**; as soon as movement is detected again, the slideshow resumes.
-    * **PAUSED** (3h no movement): the slideshow is **paused** and the screen **turns black**. As soon as movement is detected again, it continues with the next image.
-    * **OFF** (Night mode is activated between 12 AM and 6 AM): the `picframe` service is **terminated** and `kmsblank` is activated for 7 hours. **WLAN is off**. At 6 AM, the `picframe` service starts with a new album.
+    * **BLACK** (2h no movement): the slideshow is **paused** and the screen **turns black**. As soon as movement is detected again, it continues with the next image.
+    * **OFF** (night mode, 11 PM–6 AM): the `picframe` service is **stopped** and the display is powered off via CEC or a GPIO hard-switch (see `DISPLAY_POWER_METHOD`). **WLAN is blocked** for the entire night. At 6 AM, the `picframe` service starts again with a new album.
 
 ---
 
@@ -526,39 +528,59 @@ Applied when the image aspect ratio is **wider** than the screen aspect ratio.
 ### Logic of `pir_manager.py`
 
 The control is based on **inactivity** (time since last motion) and **time of day** (Day/Night).
+The PIR sensor is polled every `LOOP_SLEEP_S` (**15 seconds**), not via interrupt, so reaction to
+motion is delayed by up to that interval.
+
+#### Timing parameters (`pir_manager.py`)
+
+| Parameter | Value | Meaning |
+|---|---|---|
+| `LOOP_SLEEP_S` | 15 s | Poll interval for the PIR sensor and the day/night check |
+| `HOLDSCRREN_TIMEOUT_S` | 3600 s (60 min) | Inactivity before the slideshow is paused (screen stays on) |
+| `BLACKSCREEN_TIMEOUT_S` | 7200 s (120 min) | Inactivity before the screen is turned off |
+| `NIGHT_START_HOUR` / `NIGHT_END_HOUR` | 23 / 6 | Night window, 23:00–06:00 |
 
 #### The 4 States
 
 1.  **ON (Normal Operation)**
-    *   **Trigger:** Motion detected or script start.
+    *   **Trigger:** Motion detected, or day begins after a night, or script start (during the day).
     *   **Actions:**
-        *   Display: **ON** (via `cec-client`).
+        *   Display: **ON**.
         *   Service: **Started** (`picframe.service`).
         *   Slideshow: **Play** (Unpause via HTTP).
         *   WiFi: Explicitly unblocked (`rfkill unblock wifi`).
 
 2.  **HOLD (Pause)**
-    *   **Trigger:** No motion for **60 minutes** (`3600` seconds).
+    *   **Trigger:** No motion for **60 minutes** (`3600` seconds), daytime only.
     *   **Actions:**
         *   Slideshow: **Pause** (via HTTP). The current image remains static.
         *   Display: Remains **ON**.
 
 3.  **BLACK (Screen Off)**
-    *   **Trigger:** No motion for **2 hours** (`7200` seconds).
+    *   **Trigger:** No motion for **2 hours** (`7200` seconds), daytime only.
     *   **Actions:**
-        *   Display: **OFF** (Standby via `cec-client`).
+        *   Display: **OFF**.
         *   Slideshow: Remains paused.
 
 4.  **OFF (Night Mode)**
-    *   **Trigger:** Time between **23:00 and 06:00** (and no motion).
+    *   **Trigger:** Time between **23:00 and 06:00** — unconditional, regardless of motion or
+        inactivity time. Also applied immediately if `pir_manager.py` itself (re)starts during
+        this window, so a service restart at night never briefly turns things back on first.
     *   **Actions:**
         *   Display: **OFF**.
         *   Service: **Stopped** (`systemctl stop picframe.service`). This saves the most power as CPU load drops.
+        *   WiFi: **Blocked** (`rfkill block wifi`), for the entire night.
 
-#### Specials regarding Motion (PIR)
+#### Wake-up behavior (motion detected)
 
-*   **Immediate Wake-up:** Regardless of the state (HOLD, BLACK, OFF), motion immediately switches everything on (State **ON**).
-*   **Night Override:** If motion is detected at night, the system wakes up and **stays on for the rest of the night** (ignores the night schedule until 06:00 morning), so it doesn't turn off immediately if you stay still for a moment.
+| From state | Action on motion |
+|---|---|
+| `OFF` (night) | **None.** PIR input is ignored entirely during the night window — no wake-up, no override. WiFi and display stay off until `NIGHT_END_HOUR`. |
+| `BLACK` | Display **ON** + slideshow unpaused |
+| `HOLD` | Slideshow unpaused (display was never off) |
+
+Night mode has no override: once `OFF`, the system only leaves that state when the night window
+ends (`NIGHT_END_HOUR`), never in response to the PIR sensor.
 
 ### Status Icons & Visual Feedback
 The viewer now displays icons in the bottom right corner to indicate specific system states:
