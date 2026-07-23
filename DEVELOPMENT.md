@@ -121,6 +121,47 @@ constants:
     input, which can leave the MOSFET gate undriven during a crash/restart window. If this causes
     visible flicker, add a physical pull resistor on the gate matching the desired fail-safe state.
 
+**Follow-up — night override removed:** After testing the GPIO hard-switch on the real hardware,
+`pir_manager.py`'s "night override" (motion during the night window would wake the frame and keep
+WiFi/display on until morning) was removed entirely. Night mode (23:00–06:00) is now unconditional:
+WiFi stays blocked and the PIR sensor is ignored the whole window, including if the script itself
+(re)starts during that time (previously it would briefly unblock WiFi/turn everything on at
+startup before the next loop tick re-evaluated day/night). See README's "Logic of `pir_manager.py`"
+section for the current state table.
+
+## Time-of-Day Brightness Dimming
+
+**Problem:** The portable HDMI displays used here (even the more expensive ones) have no
+ambient-light sensor and no programmatically reachable backlight control — the backlight
+electronics live entirely inside the monitor and aren't exposed over HDMI or CEC (no standard CEC
+opcode for brightness; vendor-specific extensions exist on some smart TVs but not on generic
+portable monitors). Wanted: a first test of a time-of-day-based brightness reduction, to see
+visually how much dimming the rendered image needs before considering anything more elaborate
+(e.g. an ambient light sensor).
+
+**Options considered:**
+1.  **App-level (chosen):** `viewer_display.py` already had an unused `set_brightness()`/
+    `get_brightness()` pair driving a shader uniform (`Shape.unif[55]`, multiplies
+    `gl_FragColor.rgb` in `blend_new.fs`) — built for MQTT/Home Assistant control originally, but
+    unreachable because `Controller` was missing the `brightness` property that forwards to it
+    (one of the wrapper methods dropped during the video-restart refactor, see `TODO.md`). The
+    multiplier only applies to `__slide` (the image content), not `__slide_bg` (the mat/background,
+    drawn with a separate flat shader) — so the black letterbox/pillarbox borders (intentionally
+    covered later by a physical cardboard mat) are never touched, which is exactly what's wanted.
+2.  **DRM/KMS gamma LUT or CTM (rejected for now):** setting a CRTC gamma/color-transform property
+    on `/dev/dri/card0` would dim the entire HDMI output (not just picframe's content) without a
+    modeset — so no visible resync/black-flash is expected from the property change itself, unlike
+    a resolution/refresh-rate change. Rejected anyway because `pi3d`'s own KMS rendering already
+    holds DRM master; a *separate* process (e.g. `pir_manager.py`) trying to set CRTC properties
+    from outside would very likely get `EACCES`. Doing it from within the `picframe` process itself
+    would work, but that just reduces to option 1's architecture with a different (harder to debug)
+    mechanism, for no benefit here since only picframe's own content needs dimming.
+
+**Implementation:** added `brightness` property to `controller.py` (fixes that one item from the
+missing-wrapper bug, the other ~14 are still open, see `TODO.md`), plus a `viewer.brightness_schedule`
+config list (`[{time: "HH:MM", value: 0.0-1.0}, ...]`, empty = disabled) that `Controller.loop()`
+checks every 30s and applies via the new property. Purely additive — no effect unless configured.
+
 ## TTY Color Change Attempts
 
 *   **Objective:** Permanently change the **background color** of the entire local **Console (TTY1) on Raspberry Pi OS Bookworm Lite** (HDMI display) from **Black to Grey**.

@@ -35,6 +35,7 @@ class Controller:
         self.__paused_changed = False
         self.__force_navigate = False
         self.__next_tm = 0
+        self.__next_brightness_check_tm = 0
         self.keep_looping = True
         self.__interface_peripherals = None
         self.__interface_mqtt = None
@@ -75,7 +76,32 @@ class Controller:
             return pics[0].fname
         return ""
 
-    # ... (most property setters remain the same, just removing video specific logic)
+    @property
+    def brightness(self):
+        return self.__viewer.get_brightness()
+
+    @brightness.setter
+    def brightness(self, val):
+        self.__viewer.set_brightness(float(val))
+        if self.__mqtt_config['use_mqtt']:
+            self.publish_state()
+
+    # ... (other property setters remain the same, just removing video specific logic)
+
+    def __get_scheduled_brightness(self):
+        """Look up the brightness value for the current time from
+        viewer.brightness_schedule (list of {'time': 'HH:MM', 'value': float}).
+        Returns None if no schedule is configured."""
+        schedule = self.__model.get_viewer_config().get('brightness_schedule')
+        if not schedule:
+            return None
+        entries = sorted(schedule, key=lambda e: e['time'])
+        now_str = time.strftime('%H:%M')
+        chosen = entries[-1]['value']  # wrap around from the last entry of the previous day
+        for entry in entries:
+            if entry['time'] <= now_str:
+                chosen = entry['value']
+        return chosen
 
     def loop(self):
         exit_code = 0 # Default exit code for clean shutdown
@@ -89,6 +115,14 @@ class Controller:
             time_delay = self.__model.time_delay
             fade_time = self.__model.fade_time
             tm = time.time()
+
+            if tm >= self.__next_brightness_check_tm:
+                scheduled = self.__get_scheduled_brightness()
+                if scheduled is not None and abs(scheduled - self.__viewer.get_brightness()) > 0.001:
+                    self.__logger.info(f"Applying scheduled brightness {scheduled} for {time.strftime('%H:%M')}")
+                    self.brightness = scheduled
+                self.__next_brightness_check_tm = tm + 30  # re-check every 30s, not every frame
+
             pics = None
             loop_running = True # Assume loop is running
             skip_image = False

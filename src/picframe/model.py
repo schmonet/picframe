@@ -69,6 +69,11 @@ DEFAULT_CONFIG = {
         'menu_text_sz': 40,
         'menu_autohide_tm': 10.0,
         'geo_suppress_list': [],
+        # Time-of-day brightness schedule, e.g.:
+        # [{'time': '07:00', 'value': 1.0}, {'time': '20:00', 'value': 0.6}, {'time': '22:00', 'value': 0.3}]
+        # Dims the rendered image content only (not the mat/background) via viewer.set_brightness().
+        # Empty list = disabled, brightness stays at whatever it was last set to (default 1.0).
+        'brightness_schedule': [],
     },
     'model': {
 

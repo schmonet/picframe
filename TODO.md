@@ -7,16 +7,20 @@ the same day) plus one bug found during that review.
 
 ## Critical bug: `controller.py` is missing MQTT-facing wrapper methods
 
+**Update 2026-07-14: `brightness` fixed** (needed for the time-of-day dimming
+feature below), see "Time-of-Day Brightness Dimming" in `DEVELOPMENT.md`. The
+other ~14 wrappers listed below are still missing.
+
 While cutting the video-restart logic out of `controller.py`, roughly 15
 property/method wrappers that `interface_mqtt.py` calls directly were dropped
 instead of being kept. The spot is marked by a stale comment:
 `# ... (most property setters remain the same, just removing video specific logic)`.
 
-Missing wrappers: `shuffle`, `fade_time`, `time_delay`, `brightness`,
+Missing wrappers: `shuffle`, `fade_time`, `time_delay`,
 `matting_images`, `location_filter`, `tags_filter`, `subdirectory`,
 `date_from`, `date_to`, `display_is_on`, `clock_is_on`, `text_is_on()`,
 `set_show_text()`, `get_directory_list()`, `get_number_of_files()`,
-`purge_files()`.
+`purge_files()`. (`brightness` was fixed 2026-07-14, see above.)
 
 `Model` and `ViewerDisplay` still implement all of the underlying
 functionality (`fade_time`/`time_delay`/`subdirectory`/`shuffle`/
@@ -26,10 +30,10 @@ functionality (`fade_time`/`time_delay`/`subdirectory`/`shuffle`/
 `reset_name_tm` in `viewer_display.py`) — only the thin `Controller` wrapper
 is gone.
 
-**Impact:** any MQTT/Home Assistant command touching shuffle, brightness,
-date filters, subdirectory navigation, matting, location/tags filter, text
-toggle, clock/display on-off, or purge-files will raise `AttributeError` and
-likely take down the MQTT handler thread.
+**Impact:** any MQTT/Home Assistant command touching shuffle, date filters,
+subdirectory navigation, matting, location/tags filter, text toggle,
+clock/display on-off, or purge-files will raise `AttributeError` and likely
+take down the MQTT handler thread. (`brightness` no longer affected, see update above.)
 
 **Fix:** port the missing wrapper methods back from `upstream-main`'s
 `controller.py` (upstream still has them, just structured differently around
