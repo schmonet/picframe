@@ -72,8 +72,17 @@ viewer:
   menu_text_sz: 80                        # default=40, menu character size
   menu_autohide_tm: 10.0                  # default=10.0, time in seconds to show menu before auto hiding (0 disables auto hiding)
   geo_suppress_list: []                   # default=None, substrings to remove from the location text
-  brightness_schedule: []                 # default=[], e.g. [{time: "07:00", value: 1.0}, {time: "20:00", value: 0.6}, {time: "22:00", value: 0.3}]
-                                           # dims rendered image content only (not mat/background) by time of day; empty = disabled
+  brightness_schedule:                    # default=[], e.g. [{time: "07:00", value: 1.0}, {time: "20:00", value: 0.6}, {time: "22:00", value: 0.3}]
+    - time: "06:00"                       # dims rendered image content only (not mat/background) by time of day; empty = disabled
+      value: 0.8
+    - time: "11:00"
+      value: 1.0
+    - time: "17:00"
+      value: 0.7
+    - time: "20:00"
+      value: 0.5
+    - time: "22:00"
+      value: 0.3
 
 model:
   pic_dir: "~/picframe/cache"              # default="~/picframe/Pictures", root folder for images
@@ -92,12 +101,12 @@ model:
   video_slideshow_quality: 3              # 2-31, niedriger ist besser (Standard: 6)
   # video_slideshow_temp_dir: "/mnt/usb"    # Default: empty string. Specify temporary folder for key frame extraction to reduce I/Oi.e. writing to USB drive instead of SD card
   video_slideshow_temp_dir: "/home/picframe/picframe/ffmpeg/"  # Default: empty string. Specify temporary folder for key frame extraction to reduce I/Oi.e. writing to USB drive instead of SD card
-  # time_delay: 180.0                     # default=200.0, time between consecutive slide starts - can be changed by MQTT
-  # fade_time: 60.0                       # default=10.0, change time during which slides overlap - can be changed by MQTT
-  # update_interval: 60.0                 # default=2.0, time in seconds to wait between two consecutive scans for new files
-  time_delay: 60.0                       # default=200.0, time between consecutive slide starts - can be changed by MQTT
-  fade_time: 20.0                         # default=10.0, change time during which slides overlap - can be changed by MQTT
-  update_interval: 300.0                  # default=2.0, time in seconds to wait between two consecutive scans for new files
+  time_delay: 180.0                     # default=200.0, time between consecutive slide starts - can be changed by MQTT
+  fade_time: 60.0                       # default=10.0, change time during which slides overlap - can be changed by MQTT
+  update_interval: 60.0                 # default=2.0, time in seconds to wait between two consecutive scans for new files
+  # time_delay: 60.0                       # default=200.0, time between consecutive slide starts - can be changed by MQTT
+  # fade_time: 20.0                         # default=10.0, change time during which slides overlap - can be changed by MQTT
+  # update_interval: 300.0                  # default=2.0, time in seconds to wait between two consecutive scans for new files
   shuffle: false                          # default=true, shuffle on reloading image files - can be changed by MQTT, depends on group_by_dir.
   shuffle_Album_Subfolder: true           # default=true, when folders are <location> don't play those folders in alphabetical order
   shuffle_Folder_Root: true               # default=true, when folders in root are years <YYYY> don't play those folders in timely order
