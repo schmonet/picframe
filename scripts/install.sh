@@ -278,11 +278,15 @@ echo "[12/12] Setting up cron jobs..."
 # Create a temporary crontab file
 CRON_FILE="/tmp/picframe_cron"
 
-# Write cron jobs, ensuring they run as the correct user
+# Write cron jobs, ensuring they run as the correct user.
+# NOTE: pir_manager.py must NOT be launched from here. It's a persistent `while True` loop
+# already managed by pir_manager.service (Restart=always, enabled above) - cron doesn't check
+# whether a previous invocation is still running, so a periodic cron entry for it would spawn
+# an ever-growing pile of duplicate long-running processes, each independently polling the PIR
+# pin and driving GPIO/display power out of sync with the systemd-managed one.
 cat > "$CRON_FILE" << EOF
 # Picframe cron jobs
 */5 * * * * $PICFRAME_DIR/scripts/sync_photos.sh >> $PICFRAME_DIR/logs/sync_photos.log 2>&1
-*/15 * * * * $PICFRAME_DIR/venv/bin/python $PICFRAME_DIR/scripts/pir_manager.py >> $PICFRAME_DIR/logs/pir_manager.log 2>&1
 EOF
 
 crontab -u "$PICFRAME_USER" "$CRON_FILE"
