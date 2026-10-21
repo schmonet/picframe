@@ -131,7 +131,7 @@ echo "Project directory: $PICFRAME_DIR"
 echo "Running as user: $PICFRAME_USER"
 
 # --- System Dependencies ---
-echo "[1/12] Updating package list and installing system dependencies..."
+echo "[1/13] Updating package list and installing system dependencies..."
 apt-get update
 apt-get install -y \
     git \
@@ -150,33 +150,34 @@ apt-get install -y \
 	libsdl2-dev  \
 	python3-rpi.gpio  \
 	edid-decode \
+	iw \
 	libimage-exiftool-perl
 
 # --- System Configuration ---
 echo "Applying system configurations..."
 
 # Set system locale
-echo "[2/12] Setting system locale to de_DE.UTF-8..."
+echo "[2/13] Setting system locale to de_DE.UTF-8..."
 sudo raspi-config nonint do_change_locale de_DE.UTF-8
 
 # Add user to the video group for framebuffer and CEC access
-echo "[3/12] Adding user '$PICFRAME_USER' to grant hardware access (video, render, input groups)..."
+echo "[3/13] Adding user '$PICFRAME_USER' to grant hardware access (video, render, input groups)..."
 usermod -a -G video,render,input "$PICFRAME_USER"
 
 # Enable framebuffer blanking
-echo "[4/12] Copying udev rule for framebuffer blanking..."
+echo "[4/13] Copying udev rule for framebuffer blanking..."
 sudo cp "$PICFRAME_DIR/99-fb-blank.rules" /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 # Disable console cursor blinking
-echo "[5/12] Disabling console cursor blink..."
+echo "[5/13] Disabling console cursor blink..."
 if ! grep -q "consoleblank=0" /boot/cmdline.txt; then
     sed -i '1 s/$/ consoleblank=0/' /boot/cmdline.txt
 fi
 
 # Enforce TTY Background Color
-echo "[6/12] Forcibly set console background color after TTY init"
+echo "[6/13] Forcibly set console background color after TTY init"
 sudo "$PICFRAME_DIR/scripts/set_tty_color.sh"
 
 # Login user to background session
@@ -184,7 +185,7 @@ sudo "$PICFRAME_DIR/scripts/set_tty_color.sh"
 # sudo loginctl enable-linger picframe
 
 # Clone or update the repository
-echo "[7/12] Clone picframe repository if not exists"
+echo "[7/13] Clone picframe repository if not exists"
 if [ -d "$PICFRAME_DIR" ]; then
     echo "Project directory exists. Skipping git pull to preserve local changes."
     # The 'git pull' command is intentionally disabled in this version.
@@ -194,7 +195,7 @@ else
 fi
 
 # --- Python Virtual Environment and Application ---
-echo "[8/12] Setting up Python virtual environment and installing picframe..."
+echo "[8/13] Setting up Python virtual environment and installing picframe..."
 cd "$PICFRAME_DIR"
 
 # If venv already exists, delete it, so that it will be recreated
@@ -231,11 +232,11 @@ deactivate
 EOF
 
 # --- Make Scripts Executable ---
-echo "[9/12] Making shell scripts executable..."
+echo "[9/13] Making shell scripts executable..."
 chmod +x "$PICFRAME_DIR"/scripts/*.sh
 
 # --- Systemd Service for picframe ---
-echo "[10/12] Creating and enabling systemd service for picframe..."
+echo "[10/13] Creating and enabling systemd service for picframe..."
 cat > /etc/systemd/system/picframe.service << EOF
 [Unit]
 Description=PicFrame Slideshow Service
@@ -253,7 +254,7 @@ WantedBy=multi-user.target
 EOF
 
 # --- Systemd Service for pirmanager ---
-echo "[11/12] Creating and enabling systemd service for pirmanager..."
+echo "[11/13] Creating and enabling systemd service for pirmanager..."
 cat > /etc/systemd/system/pir_manager.service << EOF
 [Unit]
 Description=PIR Sensor and Power Manager for PicFrame
@@ -274,7 +275,7 @@ sudo systemctl enable picframe.service
 sudo systemctl enable pir_manager.service
 
 # --- Cron Jobs ---
-echo "[12/12] Setting up cron jobs..."
+echo "[12/13] Setting up cron jobs..."
 # Create a temporary crontab file
 CRON_FILE="/tmp/picframe_cron"
 
@@ -291,6 +292,32 @@ EOF
 
 crontab -u "$PICFRAME_USER" "$CRON_FILE"
 rm "$CRON_FILE"
+
+# --- Log Flood Protection ---
+echo "[13/13] Protecting the SD card against log floods..."
+# On the Pi Zero 2 W a hung WiFi chip floods the kernel log with "brcmf_sdio_htclk: HT Avail
+# request error" (seen: 46 GB in /var/log/kern.log + /var/log/syslog within 3 days, SD card full,
+# picframe crash loop). pir_manager.py disables WiFi power saving to prevent the hang; this is the
+# safety net in case it happens anyway:
+# 1. Drop the message in rsyslog (still visible in the size-limited systemd journal).
+if [ -d /etc/rsyslog.d ]; then
+    echo ':msg, contains, "brcmf_sdio_htclk: HT Avail request error" stop' > /etc/rsyslog.d/10-brcmfmac-flood.conf
+    systemctl restart rsyslog
+fi
+# 2. Rotate rsyslog's files as soon as they exceed 100 MB ...
+if [ -f /etc/logrotate.d/rsyslog ] && ! grep -q "maxsize" /etc/logrotate.d/rsyslog; then
+    sed -i '/^{/a\        maxsize 100M' /etc/logrotate.d/rsyslog
+fi
+# 3. ... and check that hourly instead of daily.
+mkdir -p /etc/systemd/system/logrotate.timer.d
+cat > /etc/systemd/system/logrotate.timer.d/hourly.conf << EOF
+[Timer]
+OnCalendar=
+OnCalendar=hourly
+AccuracySec=1m
+EOF
+systemctl daemon-reload
+systemctl restart logrotate.timer
 
 echo "----------------------------------------------------"
 echo "Installation complete!"

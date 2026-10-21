@@ -93,6 +93,33 @@ def set_display_power(is_on):
         print("Turning display off with cec-client...")
         run_command("echo 'standby 0' | cec-client -s -d 1")
 
+def disable_wifi_power_save():
+    """Turns off WiFi power saving. On the Pi Zero 2 W (BCM43436), power saving can leave the
+    WiFi chip hung after days of uptime ("brcmf_sdio_htclk: HT Avail request error: -110" flooding
+    the kernel log), recoverable only by a cold boot. The driver re-enables power saving whenever
+    the chip is re-initialized, so this is repeated after every rfkill unblock. The interface may
+    need a few seconds to reappear after unblocking, hence the retries."""
+    for attempt in range(5):
+        result = subprocess.run("sudo iw wlan0 set power_save off", shell=True,
+                                capture_output=True, text=True)
+        if result.returncode == 0:
+            print("WiFi power save disabled.")
+            return
+        time.sleep(2)
+    print(f"Could not disable WiFi power save: {result.stderr.strip()}")
+
+def set_wifi(is_on):
+    """Blocks or unblocks the WiFi radio via rfkill and sets the no-WLAN flag for picframe."""
+    if is_on:
+        print("Turning WiFi on...")
+        run_command("sudo rfkill unblock wifi")
+        run_command("rm -f /dev/shm/picframe_nowlan.flag")
+        disable_wifi_power_save()
+    else:
+        print("Turning WiFi off...")
+        run_command("sudo rfkill block wifi")
+        run_command("touch /dev/shm/picframe_nowlan.flag")
+
 def set_pause(pause: bool, port: int):
     """Pauses or unpauses the slideshow via HTTP call. Returns True on success."""
     state = "true" if pause else "false"
@@ -165,14 +192,12 @@ def main():
 
     if is_night:
         print("Starting during night hours. Entering OFF mode immediately.")
-        run_command("sudo rfkill block wifi")
-        run_command("touch /dev/shm/picframe_nowlan.flag")
+        set_wifi(False)
         set_display_power(False)
         set_service(False)
         current_state = STATE_OFF
     else:
-        run_command("sudo rfkill unblock wifi")
-        run_command("rm -f /dev/shm/picframe_nowlan.flag")
+        set_wifi(True)
         set_display_power(True)
         set_service(True)
         set_pause_with_retry(False, http_port)
@@ -194,16 +219,14 @@ def main():
                 # display stay off no matter what the PIR sensor reports.
                 if current_state != STATE_OFF:
                     print("Night time. Entering OFF mode.")
-                    run_command("sudo rfkill block wifi")
-                    run_command("touch /dev/shm/picframe_nowlan.flag")
+                    set_wifi(False)
                     set_service(False)
                     set_display_power(False)
                     current_state = STATE_OFF
             else:
                 if current_state == STATE_OFF:
                     print("Day time. Resuming normal operation.")
-                    run_command("sudo rfkill unblock wifi")
-                    run_command("rm -f /dev/shm/picframe_nowlan.flag")
+                    set_wifi(True)
                     set_display_power(True)
                     set_service(True)
                     set_pause_with_retry(False, http_port)
