@@ -254,3 +254,52 @@ To operate the video slideshow stably, it is strongly recommended to use a USB s
 1.  Format USB stick with `ext4` (faster/less CPU load than FAT32).
 2.  Mount under e.g., `/mnt/usb`.
 3.  Configuration/Call with `--temp-dir /mnt/usb`.
+
+## Sync Deadlock: "No Pictures" After All Server Albums Were Shown (2026-10)
+
+**Symptom:** After several weeks of the extended hardware test, the frame only showed the "no pictures" image, although the SMB server was reachable. `sync.log` showed every run mounting the share, logging `Starting sync loop...` and then nothing for 30 minutes, until the next cron run unmounted the share underneath it (`Mount point ... already in use. Unmounting`, `find: ... No such file or directory`).
+
+**Analysis:**
+
+| Finding | Cause | Effect |
+| :--- | :--- | :--- |
+| Endless sync loop | Album selection was unbounded random rejection sampling (random year → random album → skip if shown/cached). ~741 of ~764 server albums were already in `shown_albums.log`. | No album downloaded; loop only ended when the next run unmounted the share. |
+| Deadlock | `shown_albums.log` was only reset by `model.py` ("All albums shown"), and only when the *local cache* still contained albums. With `delete_after_show`, the cache was empty, so picframe never reset it, while sync waited for unshown albums that did not exist. | Permanent "no pictures". |
+| Parallel runs | No lock; cron runs (and `model.py`'s initial-sync `Popen`) unmounted each other's share. | Aborted runs, orphaned `<album>.tmp` folders. |
+| Orphaned `.tmp` / media-less album folders | `set -e` abort mid-copy (e.g. WiFi blocked at 23:00); folders ignored by picframe but counted in the quota or blocking the album name. | Quota can fill up with invisible files. |
+| Image paths in `shown_albums.log` | The resume bookmark (last line) was only replaced if the file still existed — but `delete_after_show` had just deleted it, so every shown image stayed in the log. | Log grew by one line per image; image lines were loaded as "albums". |
+| Log sorted alphabetically | `__write_shown_albums_log()` rewrote the whole file with `sorted()` on every album change (and would also have overwritten any reset done by sync). | Playback order lost. |
+
+**Final solution:**
+
+*   **`sync_photos.sh`:**
+    *   Builds the full album list of the share (`<year>/<album>`, hidden and `@...` NAS folders ignored), subtracts albums listed in `shown_albums.log` and albums already in the cache, and downloads from a shuffled candidate list. The loop always terminates.
+    *   Albums without matching media files are appended to `shown_albums.log` so they no longer block a round (checked again next round).
+    *   **New round:** if every album of the share is listed in the log, the share's entries are removed from it (backup `shown_albums.log.<date>.bak`; entries of other shares are kept). The decision is based on *server albums minus shown*, so stale entries of deleted/renamed folders never block a reset, and unshown albums still in the cache prevent a premature reset.
+    *   Single instance via `flock` on `/dev/shm/picframe_sync.lock`, acquired *before* the cleanup trap is installed (a second instance must not unmount the running instance's share).
+    *   On start: removes orphaned `<album>.tmp` folders, album folders without media and empty year folders.
+*   **`model.py`:**
+    *   Resume bookmark moved to `~/picframe/resume_file.txt` (written by `save_current_file_state()`/`save_resume_state()`, so the video exit-code-10 restart keeps working).
+    *   `shown_albums.log` is append-only (one album per line, playback order); it is re-read from disk on every playlist rebuild and before appending, so a new round started by sync takes effect immediately.
+    *   picframe's own "all cached albums shown" case only replays the cached albums and no longer touches the log.
+    *   One-time migration on start: image lines are removed from an old-format log, the old bookmark (last line) is moved to the resume file.
+
+## SD Card Full: Kernel Log Flood from a Hung WiFi Chip (2026-10)
+
+**Symptom:** `picframe.service` in a crash loop (restart counter > 2400), `OSError: [Errno 28] No space left on device`, `sqlite3.OperationalError: database or disk is full`, no usable `/tmp`. Before that: Pi not in WiFi, also during the day; only cold boots helped (early October and again from 2026-10-19).
+
+**Analysis:**
+
+| Step | Finding |
+| :--- | :--- |
+| `du` on `/` | `/var/log` = 47 GB: `kern.log` 23 GB + `syslog` 23 GB (rsyslog stores kernel messages twice). Journal only 516 MB (size-limited). picframe cache within quota (4.7 GB / 5 GB). |
+| Most frequent message | 4679 of the last 5000 lines: `brcmfmac: brcmf_sdio_htclk: HT Avail request error: -110` — the driver can no longer reach the WiFi chip (BCM43436 via SDIO) and logs every retry. |
+| First occurrence (rotated logs) | 2026-10-04 19:34 (uptime 26 days, = WiFi outage of early October) and 2026-10-16 14:01 (uptime 5 days); flood from 2026-10-18. Both started in the daytime, so the nightly `rfkill block` is **not** the trigger. |
+| Suspects | WiFi power saving was on (`iw wlan0 get power_save` → `on`) — a known cause of hung chips on the Pi Zero 2 W. Under-voltage (`vcgencmd get_throttled` = `0x0`, but only covers the current boot). |
+
+**Solution:**
+
+*   **`pir_manager.py`:** New `set_wifi()` helper (rfkill + no-WLAN flag) that runs `iw wlan0 set power_save off` after every `rfkill unblock` and at startup (the driver re-enables power saving on chip re-initialization; retries while `wlan0` reappears). The nightly `rfkill block` is kept.
+*   **`install.sh`, step 13 (safety net):** rsyslog filter `/etc/rsyslog.d/10-brcmfmac-flood.conf` drops the flood message (still in the size-limited journal); `maxsize 100M` in `/etc/logrotate.d/rsyslog`; `logrotate.timer` runs hourly instead of daily. Package `iw` added.
+*   **Crontab:** Duplicate `rfkill block/unblock wifi` entries removed on the Pi (pir_manager does this).
+*   **Open:** Watch whether disabling power save prevents further hangs. If not: WiFi watchdog in `pir_manager.py` (reload `brcmfmac` when the router is unreachable for minutes), and check the power supply under load (display switched on via the Pololu switch on the same 5V supply).

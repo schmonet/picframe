@@ -11,7 +11,8 @@ install location `~/picframe`; adjust if your deployment differs).
 | `picframe.service` | systemd | Runs `scripts/watcher.sh`, which (re)starts `picframe` as long as it exits with code `10` (video restart) | `~/picframe/picframe.log` (`log_file` in `configuration.yaml`, rotated daily, 7 days kept) + `journalctl -u picframe` |
 | `pir_manager.service` | systemd | Polls the PIR sensor, drives the ON/HOLD/BLACK/OFF state machine, switches display power, WiFi (night) and `picframe.service` | `journalctl -u pir_manager` |
 | `sync_photos.sh` | cron | Fills `~/picframe/cache` from the SMB share up to the configured quota (`scripts/sync_config.yaml`) | `~/picframe/sync.log` (path set in `crontab -l`) |
-| `~/picframe/shown_albums.log` | file | Albums already shown (skipped by both picframe and sync) + last line = resume bookmark | – |
+| `~/picframe/shown_albums.log` | file | Albums already shown in the current round, in playback order (skipped by both picframe and sync; sync starts a new round when all server albums are listed, backup `shown_albums.log.<date>.bak`) | – |
+| `~/picframe/resume_file.txt` | file | Image to resume from after a restart (video playback, crash, night stop) | – |
 
 Status flags in `/dev/shm` (RAM, cleared on reboot), shown as icons by picframe:
 
@@ -19,6 +20,7 @@ Status flags in `/dev/shm` (RAM, cleared on reboot), shown as icons by picframe:
 |---|---|---|
 | `picframe_offline.flag` | `sync_photos.sh` | SMB server not pingable on last sync attempt |
 | `picframe_download.flag` | `sync_photos.sh` | Sync currently running |
+| `picframe_sync.lock` | `sync_photos.sh` | Lock file, ensures only one sync runs at a time (`flock`) |
 | `picframe_nowlan.flag` | `pir_manager.py` | WiFi blocked by night mode |
 | `picframe_no_files.flag` | `model.py` | Playlist is empty |
 | `picframe_scanning.flag` | `model.py` | Album list is being rebuilt |
@@ -79,16 +81,17 @@ df -h ~/picframe/cache
 du -sh ~/picframe/cache
 grep -A4 "^photo_sync:" ~/picframe/scripts/sync_config.yaml
 
-# Orphaned .tmp album folders from aborted syncs.
-# They are ignored by picframe (never shown, never deleted) but count against the quota.
+# Orphaned .tmp album folders from aborted syncs. They are ignored by picframe but count
+# against the quota; sync_photos.sh removes them (and album folders without media) on start.
 find ~/picframe/cache -maxdepth 2 -name '*.tmp' -exec du -sh {} +
 
 # Biggest directories in the home folder (logs, venv, cache, ...)
 du -h --max-depth=2 ~ 2>/dev/null | sort -h | tail -20
 
 # Size of log files
-du -sh ~/picframe/picframe.log* ~/picframe/logs ~/picframe/scripts/*.log 2>/dev/null
+du -sh ~/picframe/picframe.log* ~/picframe/logs ~/picframe/sync.log 2>/dev/null
 journalctl --disk-usage
+sudo du -ah /var/log 2>/dev/null | sort -h | tail -10   # system logs (see "Hung WiFi chip")
 ```
 
 Cleanup (check the output above first):
@@ -99,6 +102,12 @@ find ~/picframe/cache -maxdepth 2 -type d -name '*.tmp' -exec rm -rf {} +
 
 # Shrink the systemd journal
 sudo journalctl --vacuum-size=50M
+
+# Empty a flooded system log (truncate, don't rm: rsyslog keeps the file open).
+# Save a sample first to find the cause: sudo tail -5000 /var/log/kern.log > ~/kern_tail.txt
+sudo truncate -s 0 /var/log/kern.log /var/log/syslog
+# After a full disk the journal may be "truncated", start a new journal file:
+sudo journalctl --rotate
 ```
 
 ## Problem: no pictures shown ("no pictures" image)
@@ -113,23 +122,28 @@ find ~/picframe/cache -mindepth 2 -maxdepth 2 -type d ! -name '*.tmp'
 # Number of image files in the cache
 find ~/picframe/cache -type f -iregex '.*\.\(jpg\|jpeg\|png\|heic\)' | wc -l
 
-# Shown-albums log: size and last entries (last line may be the resume bookmark)
+# Shown-albums log: size and last shown albums; resume bookmark
 wc -l ~/picframe/shown_albums.log
 tail -5 ~/picframe/shown_albums.log
+cat ~/picframe/resume_file.txt
 
 # Albums in the cache that are NOT yet marked as shown
 comm -23 <(find ~/picframe/cache -mindepth 2 -maxdepth 2 -type d ! -name '*.tmp' | sort) \
          <(sort ~/picframe/shown_albums.log)
 
 # What picframe did recently
-grep -E "Switching to album|Playlist populated|All albums shown|No albums found|Triggering initial sync" \
+grep -E "Switching to album|Playlist populated|All cached albums already shown|No albums found|Triggering initial sync" \
      ~/picframe/picframe.log | tail -20
 ```
 
 Typical causes:
 
 * **Cache empty and sync did not refill it:** see "SMB / server unreachable" and check the sync log
-  for `quota is full` (often caused by orphaned `.tmp` folders, see "SD card full").
+  for `quota is full`, `albums not shown yet` and `Starting a new round`.
+* **Older versions only** (before the sync rework of 2026-10): when every server album was listed
+  in `shown_albums.log`, sync looped endlessly and picframe never reset the log, so the frame
+  stayed on the "no pictures" image. Fix by hand: back up and empty `shown_albums.log`, then
+  `sudo systemctl restart picframe.service`.
 * **Host not in WiFi** (also during the day): see next section.
 * **Albums on disk but not yet in the database:** the image cache indexes new folders in the
   background; on a Pi Zero this can take a while after a large sync. Wait, then check again.
@@ -150,7 +164,7 @@ ping -c 3 "$SERVER_IP"
 
 # Last sync runs (use the log path from crontab -l)
 crontab -l | grep sync_photos
-grep -E "not reachable|CRITICAL|quota is full|Downloading|Finalizing|No year directories" \
+grep -E "not reachable|CRITICAL|quota is full|albums not shown yet|new round|Downloading|Finalizing|No year directories|still running" \
      ~/picframe/sync.log | tail -30
 
 # Is a sync currently running / is the share still mounted?
@@ -172,13 +186,43 @@ WiFi recovery:
 
 ```bash
 sudo rfkill unblock wifi
+# dhcpcd-based images (Bullseye):
+sudo systemctl restart dhcpcd
+# NetworkManager-based images (Bookworm):
 sudo nmcli radio wifi off && sudo nmcli radio wifi on
-sudo systemctl restart NetworkManager
-# Last resort: power cycle the Pi (a soft reboot does not always reset the WiFi chip)
+# Last resort: power cycle the Pi (a soft reboot does not reset the WiFi chip)
 ```
 
-To check whether WiFi power saving is active (a frequent cause of WiFi drop-outs on Pi Zero),
-see the `Power Management` line of `iwconfig wlan0` above.
+### Hung WiFi chip ("HT Avail request error")
+
+On the Pi Zero 2 W the WiFi chip (BCM43436) can hang after days of uptime. Symptoms: Pi not in
+WiFi (also during the day), only a cold boot (power cycle) helps, and the kernel log is flooded
+with `brcmfmac: brcmf_sdio_htclk: HT Avail request error: -110` (in October 2026 this filled
+46 GB of `/var/log/kern.log` + `/var/log/syslog` within 3 days and crashed picframe with
+"No space left on device"). WiFi power saving is the main suspect; `pir_manager.py` therefore
+turns it off at start and after every `rfkill unblock`.
+
+```bash
+# Is the chip hanging right now? (0 = OK)
+sudo dmesg | grep -c "HT Avail"
+# When did it happen before? (current and rotated logs)
+sudo zgrep -m1 "HT Avail" /var/log/kern.log /var/log/kern.log.1 /var/log/kern.log.*.gz 2>/dev/null
+
+# Power saving must be off
+iw wlan0 get power_save
+sudo iw wlan0 set power_save off
+
+# Under-voltage can cause the same symptom (0x0 = never throttled since boot)
+vcgencmd get_throttled
+```
+
+Log flood protection (set up by `install.sh`, step 13):
+
+```bash
+cat /etc/rsyslog.d/10-brcmfmac-flood.conf       # drops the flood message in rsyslog
+grep -n "maxsize" /etc/logrotate.d/rsyslog      # rotate at 100 MB
+systemctl list-timers logrotate.timer           # logrotate runs hourly
+```
 
 ## Display power: HDMI-CEC vs. 5V power switch
 
