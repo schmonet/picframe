@@ -4,14 +4,20 @@
 #
 # Media Synchronization Script for Picframe
 #
-# This script synchronizes photos and videos from remote SMB shares to a single, 
+# This script synchronizes photos and videos from remote SMB shares to a single,
 # unified local cache directory. It is designed to be run periodically (e.g., via cron).
 #
 # Key Features:
 # - FILLS a unified cache, managing separate quotas for photos and videos.
-# - Does NOT delete any existing files (manual cache management is assumed).
+# - Does NOT delete any media that picframe can still show (picframe's delete_after_show
+#   removes shown files); only orphaned .tmp downloads and album folders without any
+#   media files are cleaned up.
 # - Prioritizes photo sync and only syncs videos if the photo quota is nearly full.
-# - Randomly selects new albums to add to the cache.
+# - Randomly selects new albums from the list of server albums that are neither cached
+#   nor listed in shown_albums.log.
+# - Starts a new round (removes the share's albums from shown_albums.log, backup kept)
+#   once every album on the share has been shown.
+# - Only one instance runs at a time (flock).
 #
 # ========================================================================================
 
@@ -20,6 +26,7 @@ set -e
 # --- CONFIGURATION ---
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 CONFIG_FILE="$SCRIPT_DIR/sync_config.yaml"
+LOCK_FILE="/dev/shm/picframe_sync.lock"
 DEBUG=false
 
 # --- HELPER FUNCTIONS ---
@@ -48,7 +55,7 @@ get_config() {
 get_media_size_gb() {
     local pattern=$1
     local cache_path=$(eval echo "$(get_config "common" "cache_path")")
-    
+
     if [ ! -d "$cache_path" ]; then
         echo "0.00"
         return
@@ -57,12 +64,53 @@ get_media_size_gb() {
     # Find files, get their total size in bytes, and convert to GB
     # Use -r to prevent xargs from running du on current dir if no files found
     local total_bytes=$(find "$cache_path" -type f -regextype posix-extended -iregex ".*\.(${pattern})" -print0 | xargs -0 -r du -cb | tail -n1 | awk '{print $1}')
-    
+
     if [ -z "$total_bytes" ]; then
         total_bytes=0
     fi
     echo "scale=2; $total_bytes / 1073741824" | bc
 }
+
+# Removes leftovers that block or silently fill the cache:
+# - <album>.tmp folders from aborted downloads (ignored by picframe, but counted in the quota)
+# - album folders without any media file (marked as shown by picframe, but they also make
+#   this script skip the album because the folder already exists)
+# - empty year folders
+cleanup_cache() {
+    local cache_path=$(eval echo "$(get_config "common" "cache_path")")
+    if [ ! -d "$cache_path" ]; then
+        return
+    fi
+    local media_extensions=$(get_config "photo_sync" "file_extensions")
+    local video_extensions=$(get_config "video_sync" "file_extensions")
+    if [ -n "$video_extensions" ]; then
+        media_extensions="$media_extensions|$video_extensions"
+    fi
+
+    local dir
+    while IFS= read -r -d '' dir; do
+        log_msg "Removing orphaned temporary album: ${dir#"$cache_path"/}"
+        rm -rf "$dir"
+    done < <(find "$cache_path" -mindepth 2 -maxdepth 2 -type d -name '*.tmp' -print0)
+
+    while IFS= read -r -d '' dir; do
+        if [ -z "$(find "$dir" -type f -regextype posix-extended -iregex ".*\.(${media_extensions})" -print -quit)" ]; then
+            log_msg "Removing album without media files: ${dir#"$cache_path"/}"
+            rm -rf "$dir"
+        fi
+    done < <(find "$cache_path" -mindepth 2 -maxdepth 2 -type d -print0)
+
+    find "$cache_path" -mindepth 1 -maxdepth 1 -type d -empty -delete || true
+}
+
+# --- SINGLE INSTANCE LOCK ---
+# Must be acquired before the cleanup trap is installed: a second instance exiting here
+# must not unmount the share or remove the flags of the instance that is still running.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    log_msg "Another sync is still running. Exiting."
+    exit 0
+fi
 
 # --- CLEANUP TRAP ---
 
@@ -75,6 +123,151 @@ cleanup() {
     fi
 }
 trap cleanup EXIT
+
+# --- ALBUM SELECTION AND DOWNLOAD ---
+
+# Lists all albums (<year>/<album>) of the mounted share, fills the cache with randomly
+# chosen albums that are neither cached nor shown, and starts a new round once every
+# album on the share has been shown.
+# Usage: fill_cache <sync_type> <mount_point> <cache_path> <shown_albums_log> <quota_gb>
+#                   <max_pics_per_album> <file_extensions> <filter_root_folders_raw>
+fill_cache() {
+    local sync_type=$1
+    local mount_point=$2
+    local cache_path=$3
+    local shown_albums_log=$4
+    local quota_gb=$5
+    local max_pics_per_album=$6
+    local file_extensions=$7
+    local filter_root_folders_raw=$8
+
+    # --- List year directories (hidden and NAS system folders like @eaDir are ignored) ---
+    local year_regex="."
+    if [ -n "$filter_root_folders_raw" ]; then
+        year_regex=$(echo "$filter_root_folders_raw" | sed 's,^/,,;s,/$,,')
+    fi
+    local year_dirs=()
+    mapfile -t year_dirs < <(timeout 30s find "$mount_point" -maxdepth 1 -mindepth 1 -type d ! -name '.*' ! -name '@*' -printf '%f\n' | grep -E "$year_regex" | sort)
+
+    if [ ${#year_dirs[@]} -eq 0 ]; then
+        log_msg "No year directories found on share."
+        if [ "$DEBUG" = "true" ]; then
+            debug_msg "Listing mount point content:"
+            ls -la "$mount_point" | head -n 5
+        fi
+        return
+    fi
+
+    # --- List all albums (<year>/<album>) on the share ---
+    local server_albums=()
+    local year
+    for year in "${year_dirs[@]}"; do
+        mapfile -t -O "${#server_albums[@]}" server_albums < <(timeout 30s find "$mount_point/$year" -maxdepth 1 -mindepth 1 -type d ! -name '.*' ! -name '@*' -printf "${year//%/%%}/%f\n" | sort)
+    done
+    log_msg "Found ${#server_albums[@]} albums in ${#year_dirs[@]} year directories on share."
+
+    if [ ${#server_albums[@]} -eq 0 ]; then
+        return
+    fi
+
+    # --- Determine unshown albums and download candidates ---
+    # shown_albums.log contains absolute cache paths (<cache_path>/<year>/<album>), the same
+    # format picframe's model.py writes. Lines of other formats (e.g. image paths written by
+    # older picframe versions) never match an album and are ignored.
+    local prefix="$cache_path/"
+    local unshown=()
+    local candidates=()
+    local pass album line
+    for pass in 1 2; do
+        local -A shown=()
+        while IFS= read -r line; do
+            if [[ "$line" == "$prefix"* ]]; then
+                shown["${line#"$prefix"}"]=1
+            fi
+        done < "$shown_albums_log"
+
+        unshown=()
+        candidates=()
+        for album in "${server_albums[@]}"; do
+            if [ -n "${shown["$album"]+x}" ]; then
+                continue
+            fi
+            unshown+=("$album")
+            if [ ! -d "$cache_path/$album" ]; then
+                candidates+=("$album")
+            fi
+        done
+        unset shown
+
+        if [ ${#unshown[@]} -gt 0 ] || [ "$pass" -eq 2 ]; then
+            break
+        fi
+
+        # Every album on this share has been shown: start a new round by removing this
+        # share's albums from the log. Entries of other shares are kept.
+        local backup="$shown_albums_log.$(date '+%Y%m%d-%H%M%S').bak"
+        cp "$shown_albums_log" "$backup"
+        log_msg "All ${#server_albums[@]} albums on share have been shown. Starting a new round (backup: $(basename "$backup"))."
+        local share_list
+        share_list=$(mktemp)
+        printf "${prefix//%/%%}%s\n" "${server_albums[@]}" > "$share_list"
+        grep -v -x -F -f "$share_list" "$backup" > "$shown_albums_log.new" || true
+        mv "$shown_albums_log.new" "$shown_albums_log"
+        rm -f "$share_list"
+    done
+
+    log_msg "${#unshown[@]} albums not shown yet, ${#candidates[@]} of them not in cache."
+
+    if [ ${#candidates[@]} -eq 0 ]; then
+        return
+    fi
+    mapfile -t candidates < <(printf '%s\n' "${candidates[@]}" | shuf)
+
+    # --- Download loop ---
+    for album in "${candidates[@]}"; do
+        debug_msg "Checking media quota..."
+        local current_media_size_gb=$(get_media_size_gb "$file_extensions")
+        if (( $(echo "$current_media_size_gb >= $quota_gb" | bc -l) )); then
+            log_msg "${sync_type} quota is full ($current_media_size_gb GB / $quota_gb GB)."
+            break
+        fi
+
+        local source_album_path="$mount_point/$album"
+        local dest_album_path="$cache_path/$album"
+        debug_msg "Selected album: $album. Executing find with regex: .*\.(${file_extensions})"
+        local all_media=()
+        mapfile -t all_media < <(timeout 60s find "$source_album_path" -type f -not -name '._*' -regextype posix-extended -iregex ".*\.(${file_extensions})" | sort)
+        local num_media=${#all_media[@]}
+        debug_msg "Found $num_media files in album."
+
+        if [ $num_media -eq 0 ]; then
+            # Mark as shown, so that the album doesn't block the start of a new round.
+            # It is checked again in the next round.
+            log_msg "No ${sync_type} files in album $album. Marking as shown."
+            echo "$dest_album_path" >> "$shown_albums_log"
+            continue
+        fi
+
+        local tmp_dest_album_path="$dest_album_path.tmp"
+        log_msg "Downloading album to temporary directory: $album.tmp"
+        mkdir -p "$tmp_dest_album_path"
+
+        # Copy a subset of media files
+        local interval=1
+        if [ "$num_media" -gt "$max_pics_per_album" ]; then interval=$((num_media / max_pics_per_album)); fi
+        log_msg "Found $num_media files. Copying every ${interval}-th file."
+        local current_pic_index=0
+        local i
+        for ((i=0; i<num_media; i+=interval)); do
+            cp -p "${all_media[$i]}" "$tmp_dest_album_path/"
+            if [ $((++current_pic_index)) -ge $max_pics_per_album ]; then break; fi
+        done
+
+        touch -r "$source_album_path" "$tmp_dest_album_path"
+        log_msg "Finalizing album: $album"
+        mv "$tmp_dest_album_path" "$dest_album_path"
+    done
+}
 
 # --- MAIN SYNC FUNCTION ---
 
@@ -105,22 +298,22 @@ run_sync() {
     local mount_point=$(get_config "common" "mount_point")
     local cache_path=$(eval echo "$(get_config "common" "cache_path")")
     local shown_albums_log=$(eval echo "$(get_config "common" "shown_albums_log")")
-    
+
     # --- Safety Check for Disk Space ---
     # Ensure cache path exists for df
     mkdir -p "$cache_path"
-    
+
     # Available space in 1K blocks
     local avail_k=$(df --output=avail "$cache_path" | tail -n1)
     # Convert to GB
     local avail_gb=$(echo "scale=2; $avail_k / 1024 / 1024" | bc)
-    
+
     # Current usage of this media type
     local current_media_size_gb=$(get_media_size_gb "$file_extensions")
-    
+
     # Max allowed size for this media type = Current Size + Available Space - 1GB Buffer
     local max_safe_gb=$(echo "scale=2; $current_media_size_gb + $avail_gb - 1.0" | bc)
-    
+
     log_msg "Status: ${sync_type} usage: ${current_media_size_gb} GB (Quota: ${quota_gb} GB, Free: ${avail_gb} GB)"
 
     if (( $(echo "$quota_gb > $max_safe_gb" | bc -l) )); then
@@ -130,12 +323,17 @@ run_sync() {
         quota_gb=$max_safe_gb
     fi
 
+    if (( $(echo "$current_media_size_gb >= $quota_gb" | bc -l) )); then
+        log_msg "${sync_type} quota is full. Nothing to do."
+        return
+    fi
+
     # --- Mount and Sync Logic ---
     if mountpoint -q "$mount_point"; then
         log_msg "Mount point $mount_point is already in use. Unmounting to ensure correct share..."
         sudo umount -l "$mount_point"
     fi
-    
+
     # Recreate mount point to ensure clean state
     if [ -d "$mount_point" ]; then
         sudo rmdir "$mount_point" 2>/dev/null || true
@@ -143,7 +341,7 @@ run_sync() {
     sudo mkdir -p "$mount_point"
 
     log_msg "Mounting $share_name..."
-    
+
     # Capture mount output and exit code, with timeout to prevent hangs
     set +e
     MOUNT_OUTPUT=$(timeout 30s sudo mount -t cifs "//$server_ip/$share_name" "$mount_point" -o "credentials=$credentials_file,iocharset=utf8,vers=$smb_version,domain=$domain,uid=$(id -u),gid=$(id -g)" 2>&1)
@@ -160,89 +358,8 @@ run_sync() {
     mkdir -p "$cache_path"
     touch "$shown_albums_log"
 
-    # --- Sync Loop ---
-    log_msg "Starting sync loop..."
-    while true; do
-        debug_msg "Checking media quota..."
-        # Check media-specific quota
-        local current_media_size_gb=$(get_media_size_gb "$file_extensions")
-        if (( $(echo "$current_media_size_gb >= $quota_gb" | bc -l) )); then
-            log_msg "${sync_type} quota is full ($current_media_size_gb GB / $quota_gb GB). Exiting loop."
-            break
-        fi
-
-        debug_msg "Searching for year directories in $mount_point..."
-        # Select a random album from the source (random selection is maintained)
-        local filter_root_folders
-        if [ -n "$filter_root_folders_raw" ]; then
-            filter_root_folders=$(echo "$filter_root_folders_raw" | sed 's,^/,,;s,/$,,')
-            mapfile -t year_dirs < <(timeout 30s find "$mount_point" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' | grep -E "$filter_root_folders")
-        else
-            mapfile -t year_dirs < <(timeout 30s find "$mount_point" -maxdepth 1 -mindepth 1 -type d -printf '%f\n')
-        fi
-
-        debug_msg "Found ${#year_dirs[@]} year directories."
-
-        if [ ${#year_dirs[@]} -eq 0 ]; then 
-            log_msg "No year directories found on share '$share_name'."
-            if [ "$DEBUG" = "true" ]; then
-                debug_msg "Listing mount point content:"
-                ls -la "$mount_point" | head -n 5
-            fi
-            break
-        fi
-        local random_year=${year_dirs[$RANDOM % ${#year_dirs[@]}]}
-        debug_msg "Selected year: $random_year. Searching for albums..."
-        
-        mapfile -t album_dirs < <(timeout 30s find "$mount_point/$random_year" -maxdepth 1 -mindepth 1 -type d -printf '%f\n')
-        
-        debug_msg "Found ${#album_dirs[@]} albums in $random_year."
-        
-        if [ ${#album_dirs[@]} -eq 0 ]; then continue; fi
-        local random_album=${album_dirs[$RANDOM % ${#album_dirs[@]}]}
-        
-        debug_msg "Selected album candidate: $random_album"
-        
-        local dest_album_path="$cache_path/$random_year/$random_album"
-        
-        # Skip if album already exists in cache
-        if [ -d "$dest_album_path" ]; then 
-            debug_msg "Album already exists in cache. Skipping."
-            continue # Silently skip to find a new one faster
-        fi
-        # Skip if album has been marked as shown by picframe
-        if grep -q -x -F "$dest_album_path" "$shown_albums_log"; then
-            debug_msg "Album marked as shown. Skipping."
-            continue # Silently skip
-        fi
-
-        debug_msg "Album accepted. Listing files..."
-        local source_album_path="$mount_point/$random_year/$random_album"
-        debug_msg "Executing find with regex: .*\.(${file_extensions})"
-        mapfile -t all_media < <(timeout 60s find "$source_album_path" -type f -not -name '._*' -regextype posix-extended -iregex ".*\.(${file_extensions})" | sort)
-        local num_media=${#all_media[@]}
-        debug_msg "Found $num_media files in album."
-        
-        if [ $num_media -eq 0 ]; then continue; fi
-
-        local tmp_dest_album_path="$dest_album_path.tmp"
-        log_msg "Downloading album to temporary directory: $random_year/$random_album.tmp"
-        mkdir -p "$tmp_dest_album_path"
-
-        # Copy a subset of media files
-        local interval=1
-        if [ "$num_media" -gt "$max_pics_per_album" ]; then interval=$((num_media / max_pics_per_album)); fi
-        log_msg "Found $num_media files. Copying every ${interval}-th file."
-        local current_pic_index=0
-        for ((i=0; i<num_media; i+=interval)); do
-            cp -p "${all_media[$i]}" "$tmp_dest_album_path/"
-            if [ $((++current_pic_index)) -ge $max_pics_per_album ]; then break; fi
-        done
-
-        touch -r "$source_album_path" "$tmp_dest_album_path"
-        log_msg "Finalizing album: $random_year/$random_album"
-        mv "$tmp_dest_album_path" "$dest_album_path"
-    done
+    fill_cache "$sync_type" "$mount_point" "$cache_path" "$shown_albums_log" "$quota_gb" \
+               "$max_pics_per_album" "$file_extensions" "$filter_root_folders_raw"
 
     # --- Unmount ---
     if mountpoint -q "$mount_point"; then
@@ -254,6 +371,9 @@ run_sync() {
 # --- SCRIPT EXECUTION ---
 
 log_msg "Starting media sync process..."
+
+# 0. Remove leftovers of aborted syncs before checking quotas
+cleanup_cache
 
 # 1. Check for server connectivity before doing anything
 SERVER_IP=$(get_config "common" "server_ip")
@@ -279,9 +399,9 @@ if [ "$VIDEO_SYNC_ENABLED" == "true" ]; then
     photo_quota_gb=$(get_config "photo_sync" "quota_gb")
     photo_threshold_pct=$(get_config "photo_sync" "video_sync_threshold_pct")
     photo_file_extensions=$(get_config "photo_sync" "file_extensions")
-    
+
     current_photo_size_gb=$(get_media_size_gb "$photo_file_extensions")
-    
+
     # Calculate current percentage of photo quota used
     current_pct=0
     # Use awk for floating point comparison to avoid bc dependency here

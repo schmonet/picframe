@@ -246,20 +246,16 @@ class Model:
         self.location_filter = model_config['location_filter']
         self.tags_filter = model_config['tags_filter']
 
+        # shown_albums.log: one album path per line, appended in playback order. Shared with
+        # scripts/sync_photos.sh, which skips listed albums and starts a new round (removes the
+        # share's albums from the log) once all albums on the server have been shown.
+        # resume_file.txt: the image to resume from after a restart (video playback, crash).
         self.__shown_albums_log_path = os.path.expanduser("~/picframe/shown_albums.log")
+        self.__resume_file_path = os.path.expanduser("~/picframe/resume_file.txt")
         self.__resume_album = None
-        self.__resume_file = None
-        self.__shown_albums = set()
-        if os.path.exists(self.__shown_albums_log_path):
-            with open(self.__shown_albums_log_path, 'r') as f:
-                lines = [line.strip() for line in f if line.strip()]
-            if lines:
-                last_line = lines[-1]
-                if os.path.isfile(last_line):
-                    self.__resume_file = last_line
-                    self.__shown_albums = set(lines[:-1])
-                else:
-                    self.__shown_albums = set(lines)
+        self.__migrate_shown_albums_log()
+        self.__resume_file = self.__read_resume_file()
+        self.__shown_albums = self.__read_shown_albums()
         self.__current_album_path = None
 
     def get_viewer_config(self):
@@ -508,8 +504,7 @@ class Model:
                 if current_dir != self.__current_album_path:
                     self.__logger.info(f"Switching to album: {current_dir}")
                     self.__current_album_path = current_dir
-                    self.__shown_albums.add(current_dir)
-                    self.__write_shown_albums_log()
+                    self.__mark_album_shown(current_dir)
 
             # Increment the image index for next time
             self.__file_index += 1
@@ -616,23 +611,16 @@ class Model:
                 self.__reload_files = True
 
     def save_current_file_state(self, file_path):
-        """Writes the path of the currently displayed file to the log."""
+        """Writes the path of the currently displayed file to the resume file."""
         try:
-            with open(self.__shown_albums_log_path, 'r+') as f:
-                lines = f.readlines()
-                # If the last line is a file path, remove it before appending the new one
-                if lines and os.path.isfile(lines[-1].strip()):
-                    lines.pop()
-                f.seek(0)
-                f.writelines(lines)
+            with open(self.__resume_file_path, 'w') as f:
                 f.write(f"{file_path}\n")
-                f.truncate()
-        except (IOError, FileNotFoundError) as e:
-            self.__logger.error("Could not write current file state to %s: %s", self.__shown_albums_log_path, e)
+        except OSError as e:
+            self.__logger.error("Could not write current file state to %s: %s", self.__resume_file_path, e)
 
     def save_resume_state(self):
         """
-        Writes the path of the file *after* the current one to the log for resuming after a video.
+        Writes the path of the file *after* the current one to the resume file for resuming after a video.
         """
         if self.__file_index >= self.__number_of_files:
             return # End of album, nothing to resume
@@ -696,7 +684,9 @@ class Model:
             # 3. Determine which albums to load
             # We want to load a batch of albums.
             # If resuming, the resume_album MUST be first.
-            
+
+            # Re-read the log: sync_photos.sh may have started a new round in the meantime.
+            self.__shown_albums = self.__read_shown_albums()
             unshown_albums = [a for a in all_albums if a not in self.__shown_albums]
             
             # If resume_album exists but was marked shown (e.g. crash during last album), allow it.
@@ -709,7 +699,9 @@ class Model:
                 resumed = True
 
             if not unshown_albums and not albums_to_load:
-                self.__logger.info("All albums shown. Resetting shown_albums.log.")
+                # Only the playlist is reset here. shown_albums.log is left untouched: it tracks
+                # the round over all server albums, which only sync_photos.sh can see.
+                self.__logger.info("All cached albums already shown. Showing them again.")
                 self.__shown_albums.clear()
                 unshown_albums = list(all_albums)
                 if resume_album: # Don't duplicate if we just reset
@@ -783,7 +775,7 @@ class Model:
                         self.__logger.debug(f"Album {album_path} has files on disk but not in DB yet. Waiting for cache.")
                     else:
                         # Empty album, mark as shown so we don't try again immediately
-                        self.__shown_albums.add(album_path)
+                        self.__mark_album_shown(album_path)
                         empty_albums_count += 1
             
             self.__logger.info(f"Playlist populated with {len(self.__file_list)} files from {loaded_albums_count} albums.")
@@ -864,12 +856,69 @@ class Model:
             self.__logger.warning("Could not remove scanning flag file: %s", e)
 
 
-    def __write_shown_albums_log(self):
-        """Writes the current set of shown albums to the log file, overwriting it."""
+    @staticmethod
+    def __is_media_path(path):
+        ext = os.path.splitext(path)[1].lower()
+        return ext in image_cache.ImageCache.EXTENSIONS or ext in image_cache.VIDEO_EXTENSIONS
+
+    def __read_shown_albums(self):
+        """Returns the set of album paths listed in shown_albums.log."""
         try:
-            with open(self.__shown_albums_log_path, 'w') as f:
-                for album in sorted(list(self.__shown_albums)): # Sort for consistent output
-                    f.write(f"{album}\n")
-            self.__logger.info("Updated shown_albums.log with %d entries.", len(self.__shown_albums))
-        except (IOError, FileNotFoundError) as e:
-            self.__logger.error("Could not write to shown_albums.log: %s", e)
+            with open(self.__shown_albums_log_path, 'r') as f:
+                return {line.strip() for line in f if line.strip() and not self.__is_media_path(line.strip())}
+        except FileNotFoundError:
+            return set()
+        except OSError as e:
+            self.__logger.error("Could not read %s: %s", self.__shown_albums_log_path, e)
+            return set()
+
+    def __mark_album_shown(self, album_path):
+        """Appends an album to shown_albums.log (never rewrites the file, which is shared with
+        sync_photos.sh). The file is re-read first, as sync may have started a new round."""
+        self.__shown_albums.add(album_path)
+        if album_path in self.__read_shown_albums():
+            return
+        try:
+            with open(self.__shown_albums_log_path, 'a') as f:
+                f.write(f"{album_path}\n")
+            self.__logger.info("Added album to shown_albums.log: %s", album_path)
+        except OSError as e:
+            self.__logger.error("Could not write to %s: %s", self.__shown_albums_log_path, e)
+
+    def __read_resume_file(self):
+        """Returns the image to resume from, or None if there is none or it no longer exists."""
+        try:
+            with open(self.__resume_file_path, 'r') as f:
+                path = f.readline().strip()
+        except FileNotFoundError:
+            return None
+        except OSError as e:
+            self.__logger.error("Could not read %s: %s", self.__resume_file_path, e)
+            return None
+        return path if path and os.path.isfile(path) else None
+
+    def __migrate_shown_albums_log(self):
+        """Older versions also wrote image paths into shown_albums.log (the last line was the
+        resume bookmark). Moves the bookmark to the resume file and removes all image lines."""
+        try:
+            with open(self.__shown_albums_log_path, 'r') as f:
+                lines = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            return
+        except OSError as e:
+            self.__logger.error("Could not read %s: %s", self.__shown_albums_log_path, e)
+            return
+        if not any(self.__is_media_path(line) for line in lines):
+            return
+        if os.path.isfile(lines[-1]) and not os.path.exists(self.__resume_file_path):
+            self.save_current_file_state(lines[-1])
+        albums = list(dict.fromkeys(line for line in lines if not self.__is_media_path(line)))
+        tmp_path = self.__shown_albums_log_path + ".tmp"
+        try:
+            with open(tmp_path, 'w') as f:
+                f.writelines(f"{album}\n" for album in albums)
+            os.replace(tmp_path, self.__shown_albums_log_path)
+            self.__logger.info("Migrated shown_albums.log: kept %d albums out of %d lines.",
+                               len(albums), len(lines))
+        except OSError as e:
+            self.__logger.error("Could not migrate %s: %s", self.__shown_albums_log_path, e)
